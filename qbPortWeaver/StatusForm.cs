@@ -75,15 +75,6 @@ public partial class StatusForm : Form
         colHistoryEvent.Width = EventColumnMinWidth;
     }
 
-    // The window cannot be taller than the screen's working area: at 150% on a 1080p display the designer
-    // height scales past it, and the button row would sit behind the taskbar. Scrolls instead.
-    private void FitToWorkingArea()
-    {
-        int workingHeight = Screen.FromControl(this).WorkingArea.Height;
-        if (Height <= workingHeight) return;
-        AutoScroll = true;
-        Height = workingHeight;
-    }
 
     // The Statistics group's Clear menu also has to be attached to each child label:
     // ContextMenuStrip does not propagate from a container to its children, and the group's
@@ -98,7 +89,7 @@ public partial class StatusForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        FitToWorkingArea();
+        UiHelpers.FitToWorkingArea(this, scroll: true); // fixed dialog: scrolls rather than shrinks
         RefreshStatus();
         _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _clockTimer.Tick += clockTimer_Tick;
@@ -198,8 +189,8 @@ public partial class StatusForm : Form
         }
         lvHistory.EndUpdate();
         // Size the Event column to its longest entry so long events (recovery entries, cause
-        // annotations) can be read by scrolling horizontally, but never narrower than the
-        // designer width so short content still fills the list without a stray blank area.
+        // annotations) can be read by scrolling horizontally, but never narrower than the room the
+        // list has left beside Time and Port, so short content still fills it without a stray blank area.
         colHistoryEvent.AutoResize(ColumnHeaderAutoResizeStyle.ColumnContent);
         if (colHistoryEvent.Width < EventColumnMinWidth)
             colHistoryEvent.Width = EventColumnMinWidth;

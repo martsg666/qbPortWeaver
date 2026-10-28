@@ -220,7 +220,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 350; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
+        colHistoryEvent.Width = 350; // starting width; set at runtime to fill the list beside Time + Port, grown to the longest entry on populate (StatusForm.EventColumnMinWidth)
         // Window (input surface), not the Control chrome: this is an embedded data panel inside a
         // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
         // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.

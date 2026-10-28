@@ -138,6 +138,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         _themeColors = [ThemeColors.LogError, ThemeColors.LogWarning, ThemeColors.LogInfo, ThemeColors.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)

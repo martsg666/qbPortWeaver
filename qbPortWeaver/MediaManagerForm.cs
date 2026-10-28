@@ -50,6 +50,7 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         _colorUncertain = ThemeColors.LogWarning;
         _colorUnmatched = ThemeColors.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;

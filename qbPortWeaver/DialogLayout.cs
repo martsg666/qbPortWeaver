@@ -13,7 +13,7 @@
 /// <see cref="EdgeMargin"/> and <see cref="BottomMargin"/> are for the dialogs that auto-size to their
 /// content (ThemedMessageBox, ClientChooserForm, TimeRangeForm), which need breathing room around a
 /// handful of controls. DiagnosticsForm instead fixes its width at 560 and computes only its height
-/// from the rendered report, capped at 760 (see its SizeToContent), so it is a scrolling report rather
+/// from the rendered report, capped at 760 and at the screen's working area (see its SizeToContent), so it is a scrolling report rather
 /// than a dialog that hugs its content. It uses a uniform 8px inset, matching the designer-built
 /// windows (StatusForm, LogViewerForm, SettingsForm) - the same margin in a dense report view would
 /// only waste space. Do not "fix" that to 16 for consistency: the split tracks whether the form hugs

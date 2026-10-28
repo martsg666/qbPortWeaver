@@ -67,7 +67,7 @@ public partial class WhatsNewForm : Form
         "written to the log. When TMDB rejects the API key, or cannot be reached or times out twice in a row, " +
         "the rest of that run's lookups are skipped with one warning, instead of a warning and a wait for " +
         "every title, and Scan Now, Re-match and Import Now say so rather than listing the files as unmatched. " +
-        "A source folder that cannot be read during a scan is skipped instead of ending the whole scan.\n\n" +
+        "A network share that drops while it is being scanned is reported as unreadable instead of as already imported.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +
         "Scan Now, Import Now (including its cleanup of empty folders) and Clear Cache wait for the import running on the sync cycle instead of " +
         "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +

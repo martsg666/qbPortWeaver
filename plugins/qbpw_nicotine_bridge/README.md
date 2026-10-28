@@ -105,7 +105,7 @@ before any check has run. The two fail differently, so it is worth knowing which
 | Setting | Default | Notes |
 |---|---|---|
 | Port | `38472` | `0` picks any free port. A busy port falls back to a free one automatically |
-| Address | `127.0.0.1` | Change only if qbPortWeaver runs on another machine, which is not recommended |
+| Address | `127.0.0.1` | IPv4 or IPv6 (for example `::1`). Change only if qbPortWeaver runs on another machine, which is not recommended |
 | Token | generated | Cleared to reissue on next start |
 | Connection file | empty | Override where the connection details are written |
 | Log requests | off | Needs Nicotine+ debug logging on as well |

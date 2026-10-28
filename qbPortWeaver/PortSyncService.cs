@@ -367,7 +367,7 @@ public sealed class PortSyncService
         // When the next cycle is due. An absolute instant for the same reason RecoveryHoldUntil is
         // one: the wait starts when the cycle ends, while Timestamp is stamped at the start, so
         // deriving it as Timestamp + UpdateIntervalSeconds reads the duration against the wrong
-        // origin and runs out early by the cycle's length - up to the 30s a client restart takes,
+        // origin and runs out early by the cycle's length - up to about a minute a client restart takes,
         // or the 120s an auto-recovery round trip can. Consumers that predate this key can still
         // derive the old estimate; nothing here replaces UpdateIntervalSeconds.
         public const string NextSyncAt = "nextSyncAt";

@@ -244,7 +244,7 @@ public sealed class NicotineClient : ManagedClientBase
             if (state != StateDone)
             {
                 LogManager.Instance.LogDebug(
-                    $"NicotineClient.TestListeningPortAsync: The check is '{state ?? "unknown"}' - treating the result as undetermined");
+                    $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
                 return null;
             }
 

@@ -562,7 +562,7 @@ public partial class MediaManagerForm : Form
         }
         catch (OperationCanceledException)
         {
-            if (!IsDisposed) completionStatus = "Import cancelled.";
+            if (!IsDisposed) completionStatus = _importApplied ? "Import finished; re-scan cancelled." : "Import cancelled.";
         }
         catch (Exception ex)
         {
@@ -583,8 +583,13 @@ public partial class MediaManagerForm : Form
 
     // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
     // Returns the completion message, or null when the form was closed meanwhile.
+    // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
+    // not reported as the import being cancelled.
+    private bool _importApplied;
+
     private async Task<string?> RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
+        _importApplied = false;
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
 
         var progress = new Progress<(int Current, int Total, string FileName)>(p =>
@@ -599,6 +604,7 @@ public partial class MediaManagerForm : Form
             lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
         });
         await MediaManagerService.ApplyProposalsAsync(toApply, importMode, new(progress, CreateWaitProgress("Importing…")), cancellationToken);
+        _importApplied = true;
 
         if (IsDisposed) return null;
 
@@ -612,14 +618,15 @@ public partial class MediaManagerForm : Form
 
         if (IsDisposed) return null;
 
-        if (chkDeleteEmptyFolders.Checked)
+        // Not when the re-scan could not read the library: which folders it could read is then unknown.
+        if (chkDeleteEmptyFolders.Checked && remaining is not null)
         {
             lblScanStatus.Text = "Cleaning up empty folders…";
             // After the re-scan, and only over the folders it could read, as the sync-cycle import does: an
             // offline folder has nothing to clean and would cost another existence check against an
             // unreachable host. Through the media gate like the import before it, so a sync-cycle import
             // cannot run on the same folders at the same time.
-            string[] readFolders = [.. sourceFolders.Except(remaining?.UnreadableSourceFolders ?? [], StringComparer.OrdinalIgnoreCase)];
+            string[] readFolders = [.. sourceFolders.Except(remaining.UnreadableSourceFolders, StringComparer.OrdinalIgnoreCase)];
             await MediaManagerService.CleanupSourceFoldersAsync(readFolders, CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
             if (IsDisposed) return null;
         }

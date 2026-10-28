@@ -948,7 +948,9 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
+                // The full exception, as the Media Manager window's catch-alls log it: a failure here is
+                // unexpected, and its type and stack are what a report needs.
+                LogManager.Instance.LogMessage($"Media import cycle failed: {ex}", LogLevel.Error, Subsystem.MediaManager);
             }
             finally
             {

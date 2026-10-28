@@ -232,8 +232,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return IsAuthenticated;
     }
 
-    /// <summary>Logs a port write the client answered with a non-success HTTP status, in the one wording
-    /// every client uses for it.</summary>
+    /// <summary>Logs a port write the client answered with a non-success HTTP status, for Transmission and
+    /// Deluge. qBittorrent's PostPreferencesAsync produces the same text, and Nicotine+ reports it through
+    /// its bridge's own HTTP failure line.</summary>
     protected void LogSetPortHttpFailure(HttpResponseMessage response) =>
         LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
 

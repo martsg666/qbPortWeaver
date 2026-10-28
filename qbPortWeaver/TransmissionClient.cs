@@ -37,6 +37,7 @@ public sealed class TransmissionClient : ManagedClientBase
     // Same Empty-sentinel volatile cache as ServiceExeCache, which PiaVpnManager and VpnRegistryConfig share.
     // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
     private static volatile string? _resolvedServiceName = string.Empty;
+    private const int ErrorServiceDoesNotExist = 1060; // ERROR_SERVICE_DOES_NOT_EXIST
 
     /// <inheritdoc/>
     public override string ClientName => "Transmission";
@@ -72,9 +73,14 @@ public sealed class TransmissionClient : ManagedClientBase
                 if (sc.Status == ServiceControllerStatus.Running) return true;
             }
             // The service no longer exists (uninstalled while the app runs): forget the cached name, so the
-            // next lookup finds the process-mode setup instead of failing the service path every cycle.
-            catch (InvalidOperationException) { _resolvedServiceName = string.Empty; }
-            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
+            // next lookup finds the process-mode setup instead of failing the service path every cycle. Only
+            // for that error: an access-denied one, which ServiceController wraps the same way, keeps the name.
+            catch (InvalidOperationException ex) when (ex.InnerException is System.ComponentModel.Win32Exception { NativeErrorCode: ErrorServiceDoesNotExist })
+            {
+                _resolvedServiceName = string.Empty;
+                LogManager.Instance.LogDebug($"TransmissionClient.IsRunning: service '{serviceName}' no longer exists - looking it up again");
+            }
+            catch { } // NOSONAR S108 - any other ServiceController failure (access denied, for one) falls through to the process-based check in the base class
         }
 
         return base.IsRunning();

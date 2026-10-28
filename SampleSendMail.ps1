@@ -59,6 +59,8 @@ function RecoveryState($s) {
     # A threshold of 0 (or a missing key) means no cycle has published one: a status file written by
     # an app version from before these keys existed, or a cycle that failed before reading config.
     if ($null -eq $s.recoveryTriggerCycles -or $s.recoveryTriggerCycles -eq 0) { return 'Not reported by this app version' }
+    # Port sync set to Disabled: nothing runs, whatever the two settings say - as the Status panel shows it.
+    if (-not $s.vpnProvider -or $s.vpnProvider -eq 'Disabled') { return 'Disabled' }
     if (-not $s.recoveryEnabled -and -not $s.portClosedRecoveryEnabled) { return 'Disabled' }
 
     if ($s.recoveryEnabled) {

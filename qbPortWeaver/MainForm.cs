@@ -493,6 +493,7 @@ public partial class MainForm : Form
         form.PauseResumeRequested += (_, _) => ToggleSyncPaused();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
         form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync("Diagnostics requested", null, ShowDiagnosticsResults); // async void event handler (WinForms)
+        if (_diagnosticsRunning) form.SetDiagnosticsRunning(true); // opened mid-run: the run's finally re-enables it
         return form;
     }
 
@@ -536,14 +537,16 @@ public partial class MainForm : Form
     // The one run wrapper behind the three entry points (the tray menu, the Status panel, the results
     // dialog's Re-run): the concurrency guard, the busy toggle on whichever form asked (checked for
     // disposal, since the user can close it mid-run), the request line, and the result sink. The tray
-    // item and the Status panel's button grey out for every run, whichever started it: a click on either
-    // during a run is ignored by the guard, so without this nothing said a run was already going.
+    // item, the Status panel's button and an open results dialog's Re-run grey out for every run,
+    // whichever started it: a click on any of them during a run is ignored by the guard, so without this
+    // nothing said a run was already going. A Status panel opened mid-run is greyed in CreateStatusForm.
     private async Task RunDiagnosticsAsync(string requestLine, Action<bool>? setBusy, Action<IReadOnlyList<DiagnosticResult>> showResults)
     {
         if (_diagnosticsRunning) return;
         _diagnosticsRunning = true;
         _runDiagnosticsMenuItem.Enabled = false;
         if (_statusForm is { IsDisposed: false } panel) panel.SetDiagnosticsRunning(true);
+        _diagnosticsForm?.SetRunning(true);
         setBusy?.Invoke(true);
         LogManager.Instance.LogMessage(requestLine, LogLevel.Info);
         try
@@ -556,6 +559,7 @@ public partial class MainForm : Form
             _diagnosticsRunning = false;
             _runDiagnosticsMenuItem.Enabled = true;
             if (_statusForm is { IsDisposed: false } openPanel) openPanel.SetDiagnosticsRunning(false);
+            _diagnosticsForm?.SetRunning(false);
             setBusy?.Invoke(false);
         }
     }

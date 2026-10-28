@@ -51,7 +51,7 @@ chat room, because chat rooms are public.
 | Command | What it does |
 |---|---|
 | `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any capability this Nicotine+ version lacks |
-| `/qbpw-port [port]` | Show the port, or change it |
+| `/qbpw-port [port]` | Show the port, or change it (UPnP is turned off too, as qbPortWeaver does) |
 | `/qbpw-test [port]` | Check whether the port is reachable from outside |
 | `/qbpw-connection-file` | Where the connection details are published |
 | `/qbpw-restart` | Restart the bridge without reloading the plugin |
@@ -90,8 +90,10 @@ setup is not finished, so it is not connected), and `portmapper_unsupported` or 
 (an old UPnP mapping may remain). qbPortWeaver logs each one. `POST /v1/reconnect` carries the same
 list, without the two port-mapping codes.
 
-`POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
-`state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
+`POST /v1/porttest` waits no longer than the plugin's own cap, so a slow check normally returns
+`state: "pending"` rather than timing out. The web fallback's cap applies to each network step and
+not to the name lookup, so a very slow network can still run past it; qbPortWeaver then reads the
+check as undetermined. Treat anything other than `state: "done"` as
 undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the
 verdict came from Nicotine+'s own checker, `web` when it came from the fallback query, and `null`
 before any check has run. The two fail differently, so it is worth knowing which one answered.

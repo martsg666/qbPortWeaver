@@ -58,6 +58,12 @@ class BridgeHTTPServer(ThreadingHTTPServer):
         pass
 
 
+class BridgeHTTPServer6(BridgeHTTPServer):
+    """The same server on an IPv6 socket, for a bind address such as ::1."""
+
+    address_family = socket.AF_INET6
+
+
 class BridgeHandler(BaseHTTPRequestHandler):
     """Routes one request. Every failure becomes a JSON error body, never a traceback."""
 
@@ -252,7 +258,11 @@ class Bridge:
 
         self._set_port_lock = threading.Lock()
 
-        self._server = BridgeHTTPServer((bind_host, bind_port), BridgeHandler)
+        # The address setting accepts IPv6 too (::1, with or without brackets), which needs its own
+        # socket family: the IPv4 server would fail to bind it and the plugin would not start.
+        host = (bind_host or "").strip("[]")
+        server_class = BridgeHTTPServer6 if ":" in host else BridgeHTTPServer
+        self._server = server_class((host, bind_port), BridgeHandler)
         self._server.bridge = self
         # Bounds accept() itself; the per-connection deadline is BridgeHandler.timeout.
         self._server.timeout = ACCEPT_POLL_SECONDS

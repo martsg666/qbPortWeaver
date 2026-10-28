@@ -52,11 +52,41 @@ _BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
 def _bridge_url(host, port):
-    """The address to reach the bridge at from this machine. 0.0.0.0 is a listen address (every
-    interface), not one Windows can connect to, so a wildcard bind is shown as loopback, which it
-    also accepts - this is the URL a user copies into qbPortWeaver by hand."""
-    connect_host = "127.0.0.1" if host == "0.0.0.0" else host
+    """The address to reach the bridge at from this machine. 0.0.0.0 and :: are listen addresses
+    (every interface), not ones Windows can connect to, so a wildcard bind is shown as loopback,
+    which it also accepts - this is the URL a user copies into qbPortWeaver by hand. An IPv6
+    address is bracketed, as a URL needs."""
+    bare = host.strip("[]")
+    connect_host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(bare, bare)
+    if ":" in connect_host:
+        connect_host = f"[{connect_host}]"
     return f"http://{connect_host}:{port}/"  # NOSONAR S5332 - loopback bridge; TLS not applicable to a 127.0.0.1 IPC channel
+
+
+def _port_change_summary(result, port):
+    """What /qbpw-port did to the port and the connection: a reconnect that failed or was not
+    possible leaves the new port waiting for the next connection."""
+    if not result["changed"]:
+        return f"Already listening on port {port}."
+    action = result.get("reconnect")
+    if action == "reconnect":
+        tail = "Reconnecting; it will be live in a few seconds."
+    elif action == "connect":
+        tail = "Connecting; it will be live in a few seconds."
+    else:
+        tail = "It takes effect on the next connection."
+    return f"Port changed from {result['previous_port']} to {port}. {tail}"
+
+
+def _upnp_notes(result):
+    """set_port turns UPnP off, as qbPortWeaver does, so the command says so - also when the port
+    itself was already right - along with any mapping it could not remove."""
+    notes = []
+    if result.get("upnp_disabled"):
+        notes.append("UPnP was turned off, since the VPN forwards the port.")
+    if any(code.startswith("portmapper_") for code in result.get("warnings", [])):
+        notes.append("The old UPnP mapping may remain on the router.")
+    return notes
 
 
 def _port_summary(core_io):
@@ -320,7 +350,7 @@ class Plugin(BasePlugin):
 
         core_io = self._core_io
         host = self.settings.get("bind_host") or "127.0.0.1"
-        listening = " (listening on all interfaces)" if host == "0.0.0.0" else ""
+        listening = " (listening on all interfaces)" if host.strip("[]") in ("0.0.0.0", "::") else ""
         self.output(f"Bridge:      {_bridge_url(host, self._bridge.port)}{listening}")
         self.output(f"Connection:  {core_io.connection_state() or 'unknown'}")
 
@@ -390,22 +420,7 @@ class Plugin(BasePlugin):
             self.output(f"Could not set the port: {error}")
             return
 
-        if not result["changed"]:
-            self.output(f"Already listening on port {port}.")
-            return
-
-        # Say what actually happened to the connection: a reconnect that failed or was not
-        # possible leaves the new port waiting for the next connection.
-        action = result.get("reconnect")
-        if action == "reconnect":
-            tail = "Reconnecting; it will be live in a few seconds."
-        elif action == "connect":
-            tail = "Connecting; it will be live in a few seconds."
-        else:
-            tail = "It takes effect on the next connection."
-        if any(code.startswith("portmapper_") for code in result.get("warnings", [])):
-            tail += " The old UPnP mapping may remain on the router."
-        self.output(f"Port changed from {result['previous_port']} to {port}. {tail}")
+        self.output(" ".join([_port_change_summary(result, port)] + _upnp_notes(result)))
 
     def test_command(self, args, **_unused):
         if self._bridge is None:

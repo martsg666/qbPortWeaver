@@ -16,7 +16,6 @@ public sealed class NicotineClient : ManagedClientBase
 {
     private const string PathPreferences = "/v1/preferences";
     private const string PathPort = "/v1/port";
-    private const string PathStatus = "/v1/status";
     private const string PathPortTest = "/v1/porttest";
     private const string JsonContentType = "application/json";
     private const string AuthorizationHeader = "Authorization";
@@ -199,10 +198,11 @@ public sealed class NicotineClient : ManagedClientBase
     /// <inheritdoc/>
     /// <remarks>Reports <c>"connected"</c> or <c>"disconnected"</c>. The plugin's own
     /// <c>"connecting"</c> state - which covers the few seconds after a port change while the
-    /// client rebinds - is reported as connected, so a sync never reads its own work as an outage.</remarks>
+    /// client rebinds - is reported as connected, so a sync never reads its own work as an outage.
+    /// Read from /v1/preferences, which carries the same field, so /v1/status stays diagnosis-only.</remarks>
     public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
     {
-        using var response = await SendAsync(HttpMethod.Get, PathStatus, null,
+        using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
             LogLevel.Error, cancellationToken).ConfigureAwait(false);
         if (response is null) return null;
 

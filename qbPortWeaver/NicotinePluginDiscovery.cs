@@ -58,10 +58,15 @@ internal static class NicotinePluginDiscovery
             || bare.Equals("::1", StringComparison.OrdinalIgnoreCase);
     }
 
-    // 0.0.0.0 is a listen address (every interface), not one Windows can connect to. The connection
-    // file is only read on the plugin's own machine, so reach it through loopback, which a wildcard
-    // listener accepts.
-    private static string ConnectHost(string host) => host == "0.0.0.0" ? "127.0.0.1" : host;
+    // 0.0.0.0 and :: are listen addresses (every interface), not ones Windows can connect to. The
+    // connection file is only read on the plugin's own machine, so reach it through the loopback of
+    // the same family, which a wildcard listener accepts.
+    private static string ConnectHost(string host) => host.Trim('[', ']') switch
+    {
+        "0.0.0.0" => "127.0.0.1",
+        "::" => "::1",
+        _ => host
+    };
 
     /// <summary>Renders <paramref name="host"/> for use in a URL, bracketing an IPv6 literal.</summary>
     /// <remarks>A host containing a colon can only be an IPv6 address - neither a host name nor an

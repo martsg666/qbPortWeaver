@@ -113,7 +113,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
             if (await RequestGracefulExitAsync(cancellationToken).ConfigureAwait(false)
                 && !await WaitForProcessExitAsync(GracefulExitWaitMs, cancellationToken).ConfigureAwait(false))
                 LogManager.Instance.LogMessage(
-                    $"{ClientName} did not exit within {GracefulExitWaitMs / 1000} seconds of being asked to - force-closing it; " +
+                    $"{ClientName} did not exit within {GracefulExitWaitMs / 1000} seconds of the exit request - force-closing it; " +
                     "state it saves only on exit may be lost", LogLevel.Warn);
             // Kill all running processes and verify none remain before launching the new instance,
             // to avoid the new process inheriting a port or file lock held by a still-dying instance.
@@ -161,7 +161,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     {
         Process.Start(CreateStartInfo())?.Dispose();
         await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(false);
-        if (!IsRunning())
+        // The launched process, not IsRunning: a client that widens IsRunning (a running Transmission
+        // service) would otherwise report a launch that never happened as a success.
+        if (!IsProcessRunning())
         {
             // The launch itself succeeded, so the most likely cause is a ProcessName that does
             // not match the actual executable - without this hint the caller's generic failure

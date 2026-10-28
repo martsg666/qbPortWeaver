@@ -44,8 +44,9 @@ STALE_AFTER = 90.0
 START_TIMEOUT = 20.0
 
 # The ceiling on how long a single request may block. qbPortWeaver's HTTP client times out
-# at 10 s, and a timeout there is indistinguishable from a wedged client, so always return
-# a real response before then and let the caller poll.
+# at 10 s, and a timeout there is indistinguishable from a wedged client, so return a real
+# response before then and let the caller poll. For the web fallback this is urlopen's timeout,
+# which bounds each socket operation but not the name lookup, so it is a target, not a guarantee.
 MAX_WAIT_SECONDS = 9.0
 
 

@@ -90,8 +90,8 @@ public sealed class TransmissionClient : ManagedClientBase
     /// <inheritdoc/>
     /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
     /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
-    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
-    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+    /// confirms a system-wide location, or the daemon RPC is unreachable (rare here, since the restart
+    /// follows a port change the RPC has just accepted, so service mode is assumed). Process mode: no
     /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
     /// running instead).</remarks>
     public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
@@ -101,9 +101,9 @@ public sealed class TransmissionClient : ManagedClientBase
         bool? detected = serviceName is not null
             ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
             : null;
-        // When a service is installed but RPC is unreachable, assume service mode: the daemon
-        // being hung is the most likely cause of restart being triggered, and a process-mode
-        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+        // When a service is installed but RPC is unreachable, assume service mode: that is rare, since
+        // the restart follows a port change the RPC has just accepted, and a process-mode launch would
+        // bypass the installed service. A wrong guess here is recoverable - the helper-side
         // restart of a dormant service either succeeds or fails cleanly.
         bool isService = serviceName is not null && (detected ?? true);
         string modeDescription;

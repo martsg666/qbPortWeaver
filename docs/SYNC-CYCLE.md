@@ -136,9 +136,9 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. One case is excluded before the counter is touched at all: if the provider reported that port forwarding is *unavailable* rather than merely failing to produce a port (see **Port Forwarding Reported Unavailable** below), the cycle reports the condition and returns without registering a failure.
 
-This counter drives two behaviors:
+Two behaviors follow, only the second of them driven by the counter:
 
-1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
+1. **Default port fallback** (a disconnected VPN only, on every such cycle outside the startup grace window, whether or not auto-recovery is on) - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely. A connected VPN with no readable port gets no fallback: the cycle ends as an error.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle, in this order:
    - Determines the recovery action and target based on the provider type:

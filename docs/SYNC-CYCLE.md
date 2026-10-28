@@ -115,23 +115,23 @@ flowchart TD
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
     E -- Yes --> FALLBACK([Return cached manager, forward address forgotten])
-    E -- No --> STANDIN([Return a stand-in that reports the adapter down])
+    E -- No --> STANDIN([Return a stand-in that reports the adapter's real state])
 ```
 
 **Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out. The same fallback is returned when the adapter is up but the gateway did not answer the probe: `IsVpnConnected()` then reports `true`, a port read that fails counts toward recovery as any failed cycle does, and the instance has forgotten its forward address, so the exit-address check treats the cycle as a failed lookup.
 
-**Why the stand-in?** With no cached manager (the adapter has not been seen up since the app started, or the adapter setting just changed) there is no gateway to build a real `NatPmpManager` from. `MissingNatPmpAdapter` reports the adapter down and carries its recovery action, so the cycle goes through the same disconnected handling as any later outage: the startup grace hold, the failure count and auto-recovery, and the default-port fallback. It is never kept as the cached manager, which must carry renewal state.
+**Why the stand-in?** With no cached manager (no gateway has answered since the app started, or the adapter setting just changed) there is no gateway to build a real `NatPmpManager` from. `MissingNatPmpAdapter` reports the adapter's real state, never a port, and carries its recovery action, so the cycle is handled as with the cached manager: an adapter that is down goes through the same disconnected handling as any later outage (the startup grace hold, the failure count and auto-recovery, and the default-port fallback), and one that is up with no gateway, or a gateway that does not answer, is a connected VPN with no port. It is never kept as the cached manager, which must carry renewal state.
 
 ## Startup Grace Period
 
-Right after the app starts, the VPN is often still connecting (VPN clients launch at login and take a few seconds to a minute to establish). When **Wait for VPN on startup** is enabled (General settings, default on), for the first `StartupGracePeriodSeconds` (90s, measured from `PortSyncService` construction) a not-yet-usable VPN is treated as expected rather than a failure. During this window, if the VPN is disconnected, is connected but has not assigned a port yet, or (NAT-PMP) its adapter is not yet discoverable, the cycle holds quietly instead of taking the normal disconnection path:
+Right after the app starts, the VPN is often still connecting (VPN clients launch at login and take a few seconds to a minute to establish). When **Wait for VPN on startup** is enabled (General settings, default on), for the first `StartupGracePeriodSeconds` (90s, measured from `PortSyncService` construction) a not-yet-usable VPN is treated as expected rather than a failure. During this window, if the VPN is disconnected, or is connected but has not assigned a port yet, the cycle holds quietly instead of taking the normal disconnection path:
 
 - The tray shows a dedicated neutral `WaitingForVpn` state (not the orange disconnected state), the outcome is logged at `Info` (not `Warn`), and the status is written as `skipped` with `waitingForVpn: true`.
 - No failure is registered, so the auto-recovery counter does not advance and no recovery runs.
 - No default-port fallback is applied.
 - The cycle re-checks quickly - it returns `min(StartupGracePollSeconds (15s), update interval)` as the next wait instead of the full interval - so the port syncs within seconds of the VPN coming up.
 
-`ShouldWaitForVpnStartup` gates all three hold points; `MarkWaitingForVpn` records the quiet outcome. The per-check log line carries a countdown (`... (startup grace period, ~45s left)`), and the same "startup grace period" wording appears in the tray tooltip and the Status panel. A successful connection within the window clears the hold silently; if the window elapses with the VPN still down (or the setting is turned off), a one-time `Startup grace period ended - resuming normal handling` line is logged and the cycle falls through to the normal disconnection handling below.
+`ShouldWaitForVpnStartup` gates both hold points; `MarkWaitingForVpn` records the quiet outcome. The per-check log line carries a countdown (`... (startup grace period, ~45s left)`), and the same "startup grace period" wording appears in the tray tooltip and the Status panel. A successful connection within the window clears the hold silently; if the window elapses with the VPN still down (or the setting is turned off), a one-time `Startup grace period ended - resuming normal handling` line is logged and the cycle falls through to the normal disconnection handling below.
 
 ## VPN Disconnection Handling
 

@@ -800,8 +800,8 @@ public sealed class PortSyncService
         // Instantiate VPN manager based on configured provider
         IVpnManager? vpnManager = await CreateVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null)
-            // A null from a startup wait (e.g. NAT-PMP adapter not up yet) re-checks on the fast grace poll.
-            return _waitingForVpnThisCycle ? GraceStartupInterval(cfg.UpdateInterval) : cfg.UpdateInterval;
+            // A null means the outcome is already set: sync disabled, a missing setting or an unknown provider.
+            return cfg.UpdateInterval;
 
         var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg);
 
@@ -968,8 +968,8 @@ public sealed class PortSyncService
             // awaited recovery returns, so the line landed after "Recovery completed" and looked like
             // the recovery had failed, when it was only this cycle's outcome surfacing late.
             //
-            // Set directly rather than through SetSyncResult, matching the two sibling failure paths
-            // above (VPN disconnected, and the NAT-PMP adapter not found) which already do this. The
+            // Set directly rather than through SetSyncResult, matching the sibling failure path
+            // above (VPN disconnected) which already does this. The
             // message still reaches the tray tooltip and the Status panel through the status file;
             // only the duplicate log entry goes. LogCycleOutcome still emits the terminal Error line
             // from the status value set here.
@@ -1269,24 +1269,25 @@ public sealed class PortSyncService
             return _lastKnownNatPmpManager;
         }
 
-        // No previous knowledge of this adapter: it has not been seen up since the app started (a boot with
-        // the VPN down), or the adapter setting just changed. A stand-in that reports it down sends the cycle
-        // through the same disconnected handling as a later outage - the startup grace hold, the failure
-        // count and recovery, and the default-port fallback, which a separate path here used to skip.
-        LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManagerAsync: Adapter not discoverable and none seen before - handling it as disconnected");
+        // No previous knowledge of this adapter: no gateway has answered since the app started (a boot with
+        // the VPN down), or the adapter setting just changed. A stand-in that reads the adapter's real state
+        // sends the cycle through the same handling as the cached manager: disconnected when the adapter is
+        // down (the startup grace hold, the failure count and recovery, the default-port fallback), and a
+        // connected VPN with no port when it is up but its gateway is missing or silent.
+        LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManagerAsync: No gateway answered and none seen before - using a stand-in manager");
         return new MissingNatPmpAdapter(cfg.VpnAdapterName);
     }
 
-    // The NAT-PMP manager for an adapter that has not been seen up in this run, so no gateway is known to
-    // build a real one from. Reports the adapter down and carries its recovery action; never kept as
-    // _lastKnownNatPmpManager, which must be a real manager with renewal state.
+    // The NAT-PMP manager for an adapter whose gateway has not answered in this run, so there is none to
+    // build a real one from. Reports the adapter's real state, never a port, and carries its recovery
+    // action; never kept as _lastKnownNatPmpManager, which must be a real manager with renewal state.
     private sealed class MissingNatPmpAdapter(string adapterName) : IVpnManager
     {
         private (string Target, string Action)? _recovery;
         private (string Target, string Action) Recovery => _recovery ??= VpnAdapter.GetRecovery(adapterName);
 
         public string ProviderName => adapterName;
-        public bool IsVpnConnected() => false;
+        public bool IsVpnConnected() => VpnAdapter.IsUp(adapterName, "MissingNatPmpAdapter.IsVpnConnected");
         public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
         public string? GetRecoveryTarget() => Recovery.Target;
         public string GetRecoveryAction() => Recovery.Action;

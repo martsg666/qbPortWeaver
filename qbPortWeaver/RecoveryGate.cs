@@ -106,8 +106,8 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     }
 
     // Single increment site for _consecutiveFailedCycles. Every failure path that contributes
-    // to the auto-recovery threshold flows through here: VPN disconnected, port detection
-    // failed, and NAT-PMP adapter not found. Stamps the streak start time on the first failure
+    // to the auto-recovery threshold flows through here: VPN disconnected and port detection
+    // failed. Stamps the streak start time on the first failure
     // (for the recovery time gate), logs the cycle count message, then dispatches recovery
     // (which may no-op if the cycle-count or time threshold has not been reached).
     internal async Task RegisterFailureAndTryRecoveryAsync(

@@ -41,10 +41,12 @@ flowchart TD
     COMPARE -- Yes --> DONE_CHECK
     COMPARE -- No --> UPDATE[Set new port in client]
 
-    UPDATE --> RESTART{Restart enabled?}
+    UPDATE -- written --> RESTART{Restart enabled?}
+    UPDATE -- failed --> ERROR_UPDATE([ERROR: port write or restart failed\nretried next cycle if the write failed])
     RESTART -- Yes --> DO_RESTART[Restart client]
     RESTART -- No --> DONE_CHECK
-    DO_RESTART --> DONE_CHECK
+    DO_RESTART -- restarted --> DONE_CHECK
+    DO_RESTART -- failed --> ERROR_UPDATE
 
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
@@ -64,6 +66,7 @@ flowchart TD
     ERROR_PORT --> FINALLY
     ERROR_PF --> FINALLY
     ERROR_CLIENT --> FINALLY
+    ERROR_UPDATE --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
     FINALLY([Write status JSON]) --> POST_CMD{Successful port change?}

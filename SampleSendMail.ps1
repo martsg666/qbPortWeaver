@@ -85,7 +85,7 @@ function AddressMatch($s) {
             return $prefix + 'connect the VPN to a different server'
         }
         if ($s.vpnProtonOverOpenVpn) { return $prefix + "ProtonVPN's OpenVPN connections often do this, switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
-        return $prefix + 'reconnecting the VPN may give a different exit address, or connect to a different server'
+        return $prefix + 'reconnecting may give a different exit address, or connect to a different server'
     }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
     return 'Not checked'

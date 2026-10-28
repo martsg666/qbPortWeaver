@@ -91,8 +91,9 @@ internal sealed class VpnRegistryConfig
 /// </summary>
 internal sealed class ServiceExeCache
 {
-    // null = not found, string.Empty = not yet resolved. volatile: written at most once (Empty ->
-    // resolved path); without it a reader on another core could see a stale Empty and re-resolve once.
+    // string.Empty (or null) = not yet resolved; a "not found" is never cached, so it is searched for
+    // again on the next call. volatile: written at most once (Empty -> resolved path); without it a
+    // reader on another core could see a stale Empty and re-resolve once.
     private volatile string? _path = string.Empty;
 
     internal string? Get(string exeName, Func<string?> findServiceName, string logPrefix)

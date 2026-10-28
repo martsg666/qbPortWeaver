@@ -39,7 +39,7 @@ public partial class WhatsNewForm : Form
         "or gateway instead of telling you to pick a P2P server.\n\n" +
         "Changed: Nicotine+ says when a new port is not live yet\n" +
         "The log now says when Nicotine+ saved the port but could not switch over straight away, or " +
-        "may have left an old router mapping in place.\n\n" +
+        "may have left an old router mapping in place, and /qbpw-port says so too.\n\n" +
         "Changed: latest .NET security update included\n" +
         "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
         "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
@@ -50,7 +50,9 @@ public partial class WhatsNewForm : Form
         "installed is cycled instead of skipped. An adapter cycle whose disable step hangs re-enables the " +
         "adapter instead of leaving it disabled. A Windows service that shares its process with others is never " +
         "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
-        "a recovery that worked no longer shows the warning badge.\n\n" +
+        "a recovery that worked no longer shows the warning badge. Port-closed recovery now also waits until " +
+        "the port has stayed closed for as long as its checks normally take, so the quick checks that follow " +
+        "a reconnect no longer restart the VPN while the client is still reconnecting.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
@@ -82,7 +84,9 @@ public partial class WhatsNewForm : Form
         "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. A port change " +
         "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
-        "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
+        "The ProtonVPN port is no longer missed for a sync right after ProtonVPN starts a new log file. " +
+        "Start Automatically shows the real state, the Media Manager keeps the file extension and shows " +
+        "an & in a title as itself, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
         "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +

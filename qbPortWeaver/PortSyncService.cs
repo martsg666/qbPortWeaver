@@ -1678,8 +1678,8 @@ public sealed class PortSyncService
     private bool VpnExitMismatchBehindAnotherNat =>
         _vpnExitMismatch && _vpnForwardAddress is not null && VpnExitAddress.IsBehindAnotherNat(_vpnForwardAddress);
 
-    // Ends a hold the mismatch was causing - the port is open, or the provider reports no forward
-    // address - without announcing anything: the open-port line or the provider change says what happened.
+    // Ends a hold the mismatch was causing - the port is open, or a switch to a provider that reports no
+    // forward address - without announcing anything: the open-port line or the provider change says what happened.
     // The addresses go too, so the status file does not show a stale pair beside a cleared mismatch, or
     // a NAT-PMP pair after a switch to a provider that reports none.
     // keepReconnects (the open-port case): the reconnects already made stay spent, so a client whose test

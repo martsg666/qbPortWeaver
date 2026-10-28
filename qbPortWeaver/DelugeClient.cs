@@ -93,7 +93,7 @@ public sealed class DelugeClient : ManagedClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                LogSetPortHttpFailure(response);
                 return false;
             }
 
@@ -281,9 +281,9 @@ public sealed class DelugeClient : ManagedClientBase
         bool randomPort = resultElement.TryGetProperty("random_port", out var randomPortElement) &&
                           randomPortElement.ValueKind == JsonValueKind.True;
 
-        // listen_random_port is null until the daemon has actually picked one, and Deluge writes it
-        // back to null whenever random_port is turned off - so the null case here is its ordinary
-        // resting state, not a malformed response.
+        // listen_random_port is null until the daemon has actually picked one, and once picked it is kept
+        // after random_port is turned off (measured), which is why it is read only while random_port is on.
+        // So a null here is a daemon that has not picked one yet, not a malformed response.
         if (randomPort)
             return resultElement.GetInt32OrNull("listen_random_port");
 

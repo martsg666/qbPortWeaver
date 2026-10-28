@@ -230,11 +230,13 @@ def _web_port_check(port, timeout, log):
             body = response.read(65536).decode("utf-8", "replace")
     # Any network or parse failure means "could not determine", never a hard error.
     except Exception as error:  # noqa: BLE001
-        log("web port check failed: %s", (error,))
+        log("Web port check failed: %s", (error,))
         return None
 
     # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.
     match = re.search(r"\b%d/tcp\s+(open|closed)\b" % port, body, re.IGNORECASE)
     if match is None:
+        # Logged, or a service that changed its page would leave every check undetermined with no trace.
+        log("Web port check gave no verdict for port %d (%d characters of reply)", (port, len(body)))
         return None
     return match.group(1).lower() == "open"

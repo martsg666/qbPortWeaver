@@ -241,7 +241,8 @@ public sealed class PortSyncService
     // Uptime reading at the last exit-address reconnect, for MinVpnExitReconnectSpacing; null before the first.
     private TimeSpan? _vpnExitLastReconnectAt;
     // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
-    // hold but not the episode; cleared by a matching lookup, an open port or a provider with no forward.
+    // hold but not the episode; cleared by a matching lookup, an open port outside the settle window, or a
+    // provider with no forward.
     private bool _vpnExitAnnounced;
     // Whether the "reachable again" line has gone out for the current exit-address announcement: an open
     // result inside the settle window keeps the announcement, and the checks after it would otherwise
@@ -260,6 +261,11 @@ public sealed class PortSyncService
     // manual-test entry point (TestRecoveryAsync); the app runs a single sync service, and
     // Interlocked/Volatile cover the manual test bumping it from the UI thread.
     private static int _recoveryGeneration;
+    // Environment.TickCount64 at the last recovery dispatch of any kind, stamped before and after the
+    // helper call; 0 before the first. A ProtonVPN service restart goes through 2-3 connections of its own
+    // whichever trigger sent it, so the exit-address reconnects wait on any recent recovery, not only on
+    // their own (see ReconnectForExitAddressAsync). Static for the same reason as _recoveryGeneration.
+    private static long _lastRecoveryDispatchTick;
 
     // _recoveryGeneration as read at cycle start, the generation the last successful cycle consumed,
     // and whether the two differed. Taken at cycle start so a recovery dispatched mid-cycle
@@ -850,6 +856,7 @@ public sealed class PortSyncService
         // A down tunnel verifies nothing, and the first check after it comes back is usually the client still
         // reconnecting: start the closed-port sequence (and its time floor) again, as an exit-address hold
         // ending does, so that check cannot complete a count from before the outage and fire a restart.
+        ForceVerifyAfterOutage();
         RestartClosedPortSequence();
         string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
         await _recoveryGate.RegisterFailureAndTryRecoveryAsync(
@@ -921,6 +928,10 @@ public sealed class PortSyncService
                 MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
                 return new TargetPortResult(GraceStartupInterval(cfg.UpdateInterval), 0, null);
             }
+            // No port to verify either, and the connection is likely bouncing (PIA still assigning one):
+            // the closed-port sequence starts again, as when the VPN is found down.
+            ForceVerifyAfterOutage();
+            RestartClosedPortSequence();
             // The provider has told us there is no forwarded port to be had until the user changes
             // something. That is a configuration state, not a fault, so it is reported and re-checked
             // on the normal cadence but never counted toward auto-recovery: a service restart cannot
@@ -1258,6 +1269,7 @@ public sealed class PortSyncService
             MarkWaitingForVpn(status, $"Waiting for VPN adapter '{adapterName}' to come up");
             return null;
         }
+        ForceVerifyAfterOutage();
         RestartClosedPortSequence(); // as when the VPN is not connected, see HandleVpnDisconnectedAsync
         string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
         var (recoveryTarget, recoveryAction) = VpnAdapter.GetRecovery(adapterName);
@@ -1623,7 +1635,7 @@ public sealed class PortSyncService
     // sequence, for the same reason a matching lookup does.
     private void EndVpnExitHoldWithoutForward(IVpnManager? vpnManager)
     {
-        if (vpnManager is not null && string.Equals(vpnManager.ProviderName, _vpnExitProvider, StringComparison.Ordinal))
+        if (vpnManager is not null && string.Equals(vpnManager.ProviderName, _vpnExitProvider, StringComparison.OrdinalIgnoreCase))
         {
             // After a give-up the hold stays: a forward address the provider has merely stopped reporting
             // (ProtonVPN once its log has rotated the line away) means no new connection since the mismatch
@@ -1686,6 +1698,14 @@ public sealed class PortSyncService
         // design, so without this the first check after a reconnect to a good server - usually the
         // client still reconnecting - would be counted as confirmed, and with a trigger of one would
         // fire recovery on the very server the user just moved to.
+        // After a give-up a lookup that could not complete keeps the hold, as a forward address that is no
+        // longer reported does (EndVpnExitHoldWithoutForward): no new connection has been made, and ending
+        // it would let the generic trigger restart the VPN after the user was told to change server.
+        if (exit is null && _vpnExitMismatch && _vpnExitGiveUpNotified)
+        {
+            LogManager.Instance.LogDebug("PortSyncService.EndVpnExitHold: exit address not determined after the give-up - the hold stays");
+            return;
+        }
         if (_vpnExitMismatch) RestartClosedPortSequence();
         _vpnExitMismatch = false;
         // A match at a closed check, after reconnects, counts them as this outage's recovery: the session they
@@ -1707,6 +1727,11 @@ public sealed class PortSyncService
         if (episodeEnds) EndVpnExitEpisode();
     }
 
+    // Whether any recovery was dispatched less than MinVpnExitReconnectSpacing ago.
+    private static bool RecentRecoveryDispatched =>
+        Volatile.Read(ref _lastRecoveryDispatchTick) is var tick and not 0
+        && Environment.TickCount64 - tick < (long)MinVpnExitReconnectSpacing.TotalMilliseconds;
+
     // Whether the last exit-address reconnect is less than MinVpnExitReconnectSpacing old.
     private bool ExitReconnectSettling =>
         _vpnExitLastReconnectAt is { } last && _uptime.Elapsed - last < MinVpnExitReconnectSpacing;
@@ -1723,9 +1748,19 @@ public sealed class PortSyncService
         LogManager.Instance.ClearLogState(VpnExitNoTargetStateKey);
     }
 
+    // A port known closed or pending before the VPN went down is re-tested on the first connected cycle,
+    // not after the throttle: RestartClosedPortSequence below clears the flags that force a check, and a
+    // tunnel that comes back on the same port (Static port, a NAT-PMP renewal) brings no port change to
+    // force one either.
+    private void ForceVerifyAfterOutage()
+    {
+        if (_portConfirmedClosed || _portCheckPendingConfirmation) _cyclesSinceVerify = VerifyEveryNCycles;
+    }
+
     // Makes the next closed result a first, unconfirmed one again. Used when an exit-address hold ends at
-    // a closed check: the confirmed state survives a port change by design, so without this the first
-    // check after a reconnect - usually the client still reconnecting - would count as confirmed. The
+    // a closed check, when the VPN is found down, and on a switch to a provider with no forward address:
+    // the confirmed state survives a port change by design, so without this the first check after a
+    // reconnect - usually the client still reconnecting - would count as confirmed. The
     // outage itself stays announced (_portClosedAnnounced), so a later reopen is still reported. The time
     // floor starts again too, from the next confirmation: measured from the first one, it would already
     // have passed, and give no cover to the burst of closed checks that follows the reconnect.
@@ -1767,6 +1802,8 @@ public sealed class PortSyncService
         // own intermediate connections, and a final connection that mismatches again is the same episode,
         // which must not raise its balloon a second time.
         if (!keepReconnects || !ExitReconnectSettling) _vpnExitAnnounced = false;
+        // The Warn latch goes even while the announcement is kept: a final connection that mismatches with the
+        // same text logs the Warn again (the port was seen open in between), but raises no second balloon.
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
         LogManager.Instance.ClearLogState(VpnExitNoTargetStateKey);
     }
@@ -1923,7 +1960,7 @@ public sealed class PortSyncService
         // longer carries - self-correcting, since the release restores the configured value either way,
         // but it wrote a nonexistent address and logged it as live. Reading here is correct by
         // construction and bounds nothing on how old the baseline is. The cost is one request, on a path
-        // that only runs after three confirmed closed checks.
+        // that only runs once the port-closed trigger's count is reached.
         var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
 
         // Arm deliberately left set, for the same reason the SelectBindAddress case below leaves it: the
@@ -2055,11 +2092,13 @@ public sealed class PortSyncService
         return false;
     }
 
-    // Whether the last recorded port-closed hold still describes the trigger: not yet over, and the count
-    // still at the threshold of an armed trigger that no mismatch holds instead. The threshold is this
-    // cycle's, as published in the status.
+    // Whether the last recorded port-closed hold still describes the trigger: the count still at the
+    // threshold of an armed trigger that no mismatch holds instead. The threshold is this cycle's, as
+    // published in the status. An instant already past is still published: the panel then reads "Will
+    // trigger on the next closed check" rather than a count past its target, on a cycle whose test did
+    // not reach the trigger.
     private bool PortClosedHoldStillApplies(Dictionary<string, object?> status) =>
-        _portClosedHoldEndsAt is { } end && end > _uptime.Elapsed
+        _portClosedHoldEndsAt is not null
         && _portClosedRecoveryArmed && !_vpnExitMismatch
         && status[StatusKeys.PortClosedRecoveryTriggerChecks] is int trigger && trigger > 0 && _confirmedClosedCount >= trigger;
 
@@ -2146,8 +2185,9 @@ public sealed class PortSyncService
         // cycles the machine's own network adapter - so none is made; the mismatch Warn already gave the cause.
         if (VpnExitMismatchBehindAnotherNat) return;
         // Ahead of the give-up as well as the next reconnect: the session the last reconnect produced must
-        // have settled before it is judged either way.
-        if (ExitReconnectSettling)
+        // have settled before it is judged either way. Any recent recovery counts, not only an exit
+        // reconnect: the failed-cycle or port-closed trigger restarts the service just the same.
+        if (ExitReconnectSettling || RecentRecoveryDispatched)
         {
             LogManager.Instance.LogDebug("PortSyncService.ReconnectForExitAddressAsync: the last reconnect is under " +
                 $"{MinVpnExitReconnectSpacing.TotalMinutes:0} minutes old - waiting for the connection to settle");
@@ -2161,9 +2201,7 @@ public sealed class PortSyncService
             // "attempts": a reconnect is counted when it is dispatched, and one the helper could not carry
             // out has already logged its own Warn, so the line must stay true either way.
             string giveUp = $"The exit address still does not match the forwarded one after {MaxVpnExitReconnects} reconnect attempts - " +
-                            (_vpnProtonOverOpenVpn
-                                ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
-                                : "connect the VPN to a different server");
+                            VpnExitAddress.DescribeAdvice(_vpnProtonOverOpenVpn, gaveUp: true);
             LogManager.Instance.LogMessage(giveUp, LogLevel.Warn);
             RaisePortVerificationFailed(giveUp + ".");
             return;
@@ -2752,14 +2790,18 @@ public sealed class PortSyncService
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (service restart)");
             if (!manualTest) SessionStats.RecordRecovery();
             Interlocked.Increment(ref _recoveryGeneration);
+            Volatile.Write(ref _lastRecoveryDispatchTick, Environment.TickCount64);
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _lastRecoveryDispatchTick, Environment.TickCount64);
         }
         else if (action == HelperProtocol.ActionCycleAdapter)
         {
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (adapter cycle)");
             if (!manualTest) SessionStats.RecordRecovery();
             Interlocked.Increment(ref _recoveryGeneration);
+            Volatile.Write(ref _lastRecoveryDispatchTick, Environment.TickCount64);
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _lastRecoveryDispatchTick, Environment.TickCount64);
         }
         else
         {

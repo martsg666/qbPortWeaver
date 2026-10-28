@@ -581,15 +581,8 @@ public partial class StatusForm : Form
         if (IsExitMismatchBehindAnotherNat(s))
             return $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
                    $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet.";
-        string advice;
-        if (s.VpnExitReconnectGaveUp)
-            advice = s.VpnProtonOverOpenVpn
-                ? "Switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
-                : "Connect the VPN to a different server.";
-        else
-            advice = s.VpnProtonOverOpenVpn
-                ? "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
-                : "Reconnecting may give a different exit address, or connect to a different server.";
+        string clause = VpnExitAddress.DescribeAdvice(s.VpnProtonOverOpenVpn, s.VpnExitReconnectGaveUp);
+        string advice = string.Concat(char.ToUpperInvariant(clause[0]).ToString(), clause.AsSpan(1), ".");
         return $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
                $"{s.VpnExitAddress}, so they cannot reach the port. {advice}";
     }

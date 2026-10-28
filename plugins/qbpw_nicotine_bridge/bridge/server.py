@@ -30,7 +30,8 @@ SHUTDOWN_JOIN_SECONDS = 5.0
 
 # Two audiences, and the README's endpoint table records which is which per route. qbPortWeaver
 # consumes GET /v1/preferences, POST /v1/port and POST /v1/porttest. The rest - GET /, GET
-# /v1/status, the GET aliases of /v1/port and /v1/porttest, and POST /v1/reconnect - exist for
+# /v1/status, GET /v1/port (an alias of /v1/preferences), GET /v1/porttest (the last verdict), and
+# POST /v1/reconnect - exist for
 # manual diagnosis and are deliberately not called by the app. Reading the code alone they look like dead
 # surface, which is the same shape as the genuinely dead `port_test` capability removed in 2.6.4,
 # so check the README table before concluding a route is unused.

@@ -117,7 +117,8 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     {
         // With the trigger off there is no streak to report: counting one only for it to be reset made every
         // cycle of an outage log "(1 consecutive failed cycle)". Switched off, nothing can be accumulating, so
-        // the cap goes too: a disabled feature leaves no stale counters to surprise the user on re-enable.
+        // the cap goes too. The offline backoff is kept on purpose: toggling the setting must not be a way
+        // round it, and it runs out within 15 minutes anyway.
         if (!cfg.Enabled)
         {
             LogManager.Instance.LogMessage(reason, logLevel);

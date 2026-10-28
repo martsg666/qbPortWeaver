@@ -70,12 +70,22 @@ internal static class VpnExitAddress
             return $"{source} forwards {portText} on {forward}, a private address, " +
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
-        string advice = protonOverOpenVpn
-            ? "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
-            : "reconnecting may give a different exit address, or connect to a different server";
         return $"{source} forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
-               $"given {exit}, so they cannot reach the forwarded port - {advice}";
+               $"given {exit}, so they cannot reach the forwarded port - {DescribeAdvice(protonOverOpenVpn, gaveUp: false)}";
     }
+
+    /// <summary>
+    /// The advice for a mismatch, as a lower-case clause without a full stop: the log, the give-up line and
+    /// the Status panel's tooltip all use it, so they cannot drift apart. On ProtonVPN's OpenVPN tunnel it
+    /// leads with switching protocol; once the reconnects are spent it no longer suggests reconnecting.
+    /// </summary>
+    internal static string DescribeAdvice(bool protonOverOpenVpn, bool gaveUp) => (protonOverOpenVpn, gaveUp) switch
+    {
+        (true, true) => "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server",
+        (false, true) => "connect the VPN to a different server",
+        (true, false) => "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server",
+        (false, false) => "reconnecting may give a different exit address, or connect to a different server",
+    };
 
     /// <summary>
     /// The tray balloon form of <see cref="DescribeMismatch"/>: Windows keeps at most 255 characters of a

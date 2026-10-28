@@ -232,6 +232,11 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return IsAuthenticated;
     }
 
+    /// <summary>Logs a port write the client answered with a non-success HTTP status, in the one wording
+    /// every client uses for it.</summary>
+    protected void LogSetPortHttpFailure(HttpResponseMessage response) =>
+        LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+
     /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
     protected virtual string ApiLabel => "Web UI";
 

@@ -31,8 +31,8 @@ public sealed class TransmissionClient : ManagedClientBase
     private readonly string _userName;
     private string? _sessionId;
     // Sentinel values: string.Empty = not yet resolved or last lookup failed; non-empty = cached name.
-    // null is never assigned at runtime - the field starts as Empty and only transitions to non-empty
-    // on a successful lookup. The nullable type is required by the volatile reference contract.
+    // null is never assigned at runtime - the field starts as Empty, becomes non-empty on a successful
+    // lookup, and returns to Empty only when that service turns out to be gone (see IsRunning). The nullable type is required by the volatile reference contract.
     // Static so the SCM enumeration persists across sync-cycle instances.
     // Same Empty-sentinel volatile cache as ServiceExeCache, which PiaVpnManager and VpnRegistryConfig share.
     // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
@@ -71,6 +71,9 @@ public sealed class TransmissionClient : ManagedClientBase
                 sc.Refresh();
                 if (sc.Status == ServiceControllerStatus.Running) return true;
             }
+            // The service no longer exists (uninstalled while the app runs): forget the cached name, so the
+            // next lookup finds the process-mode setup instead of failing the service path every cycle.
+            catch (InvalidOperationException) { _resolvedServiceName = string.Empty; }
             catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
         }
 
@@ -177,7 +180,7 @@ public sealed class TransmissionClient : ManagedClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                LogSetPortHttpFailure(response);
                 return false;
             }
 

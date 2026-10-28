@@ -8,8 +8,11 @@ partial class MainForm
     {
         if (disposing)
         {
+            // _delayCts and _updateSemaphore are cancelled or left, not disposed: the main loop is not
+            // awaited on exit and may still be unwinding a cancelled cycle on a background thread, where a
+            // disposed one turns an ordinary shutdown into Error lines. Both live as long as the process.
+            // _shutdownCts is disposed, after Cancel: the loop uses only the token cached in _shutdownToken.
             _delayCts?.Cancel();
-            _delayCts?.Dispose();
             _shutdownCts?.Cancel();
             _shutdownCts?.Dispose();
 
@@ -23,7 +26,6 @@ partial class MainForm
             _iconError?.Dispose();
             _iconPaused?.Dispose();
             _updateCheckTimer?.Dispose();
-            _updateSemaphore?.Dispose();
             _updateMenuItemFont?.Dispose();
             components?.Dispose();
         }

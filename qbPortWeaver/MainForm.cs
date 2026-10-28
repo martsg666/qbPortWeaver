@@ -101,6 +101,12 @@ public partial class MainForm : Form
     // Shutdown cancellation token to signal graceful exit
     private readonly CancellationTokenSource _shutdownCts = new();
 
+    // Its token, taken once while the source is alive. The source is disposed with the form, but the main
+    // loop is not awaited on exit and may still be unwinding a cancelled cycle on a background thread;
+    // reading _shutdownCts.Token there would throw ObjectDisposedException and log a clean exit as two
+    // Error lines. A token of a source that was cancelled before it was disposed keeps working.
+    private readonly CancellationToken _shutdownToken;
+
     // Guard so SetVisibleCore fires OnLoad exactly once
     private bool _formLoaded;
 
@@ -123,6 +129,7 @@ public partial class MainForm : Form
 
     public MainForm()
     {
+        _shutdownToken = _shutdownCts.Token;
         InitializeComponent();
 
         // Guard against the Visual Studio designer instantiating MainForm: runtime-only side effects
@@ -504,7 +511,7 @@ public partial class MainForm : Form
         form.SetReachableChecking();
         LogManager.Instance.LogMessage("Manual port test requested", LogLevel.Info);
         bool? open;
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
         cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
         try
         {
@@ -587,7 +594,7 @@ public partial class MainForm : Form
     // continuation back to the UI thread for ShowDiagnosticsResults.
     private async Task<IReadOnlyList<DiagnosticResult>?> RunDiagnosticsCoreAsync()
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
         cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
         try
         {
@@ -861,7 +868,7 @@ public partial class MainForm : Form
         int updateInterval;
         bool manualSync;
         bool quickRecheck;
-        await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+        await _updateSemaphore.WaitAsync(_shutdownToken);
         try
         {
             LogManager.Instance.LogBlankLine();
@@ -876,7 +883,7 @@ public partial class MainForm : Form
             _manualSyncTriggered = false;
             quickRecheck = _quickRecheckPending;
             _quickRecheckPending = false;
-            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
+            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownToken);
         }
         finally
         {
@@ -912,7 +919,7 @@ public partial class MainForm : Form
     {
         try
         {
-            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token);
+            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownToken);
             return true;
         }
         catch (OperationCanceledException)
@@ -944,7 +951,7 @@ public partial class MainForm : Form
         {
             try
             {
-                await MediaManagerService.ImportAsync(_shutdownCts.Token);
+                await MediaManagerService.ImportAsync(_shutdownToken);
             }
             catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
             {
@@ -974,7 +981,7 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: Waiting {updateInterval} seconds before next cycle");
             // Link both tokens: _delayCts (manual sync) and _shutdownCts (app exit)
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownCts.Token);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownToken);
             await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
         }
         catch (OperationCanceledException)
@@ -1014,7 +1021,7 @@ public partial class MainForm : Form
         try
         {
             LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
-            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownCts.Token);
+            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownToken);
             if (info is null)
                 NotifyUpdateCheckFailed(manual);
             else if (info.IsNewer)

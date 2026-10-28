@@ -83,11 +83,12 @@ public sealed class NicotineClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>A cold start makes the plugin publish a fresh connection file; re-read it so the
-    /// rest of this cycle talks to the endpoint it actually bound.</remarks>
+    /// rest of this cycle talks to the endpoint it actually bound. Read directly rather than through
+    /// TryRediscover, so a file not written yet does not spend the one retry later requests rely on.</remarks>
     public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
     {
         bool started = await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
-        if (started) TryRediscover();
+        if (started) ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: true);
         return started;
     }
 
@@ -297,8 +298,14 @@ public sealed class NicotineClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
-    /// launch must use the current value rather than the one saved in Settings.</remarks>
-    protected override string ResolveUrl() => _endpoint;
+    /// launch must use the current value rather than the one saved in Settings. The connection file is
+    /// re-read on each probe: Nicotine+ was closed, so there was none until the plugin starts, and a
+    /// bridge on another port (http_port 0, or a busy configured one) could otherwise never answer.</remarks>
+    protected override string ResolveUrl()
+    {
+        ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: true);
+        return _endpoint;
+    }
 
     // ------------------------------------------------------------------ transport
 

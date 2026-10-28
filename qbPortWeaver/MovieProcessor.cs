@@ -125,26 +125,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
     {
         var files = new HashSet<string>(groupFiles, StringComparer.OrdinalIgnoreCase);
-        var folder = Path.GetDirectoryName(first.File);
-        if (!string.IsNullOrEmpty(folder))
-        {
-            try
-            {
-                foreach (var path in Directory.EnumerateFiles(folder))
-                {
-                    if (!FileNameParser.IsVideoFile(path)) continue;
-                    var fileName = Path.GetFileName(path);
-                    var (title, year) = FileNameParser.ParseTitleYear(fileName);
-                    if (year == first.Year && string.Equals(title, first.Title, StringComparison.OrdinalIgnoreCase)
-                        && !IsBarePartName(fileName, title, year))
-                        files.Add(path);
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogDebug($"MovieProcessor.IsMultiPartGroup: Could not list '{folder}': {ex.Message}", Subsystem.MediaManager);
-            }
-        }
+        AddSiblingsOnDisk(first, files);
 
         var suffixes = files.Select(f => ExtractPartSuffix(Path.GetFileName(f))).ToList();
         if (suffixes.Count < 2 || !suffixes.TrueForAll(s => s is not null)) return false;
@@ -153,6 +134,28 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         var numbers = suffixes.Select(s => int.TryParse(new string(s!.Where(char.IsDigit).ToArray()), out var n) ? n : 0)
                               .Order().ToList();
         return numbers.SequenceEqual(Enumerable.Range(1, numbers.Count));
+    }
+
+    // Adds the video files beside first that parse to its title and year, for IsMultiPartGroup.
+    private static void AddSiblingsOnDisk((string File, string Title, int? Year) first, HashSet<string> files)
+    {
+        var folder = Path.GetDirectoryName(first.File);
+        if (string.IsNullOrEmpty(folder)) return;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(folder).Where(FileNameParser.IsVideoFile))
+            {
+                var fileName = Path.GetFileName(path);
+                var (title, year) = FileNameParser.ParseTitleYear(fileName);
+                if (year == first.Year && string.Equals(title, first.Title, StringComparison.OrdinalIgnoreCase)
+                    && !IsBarePartName(fileName, title, year))
+                    files.Add(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MovieProcessor.AddSiblingsOnDisk: Could not list '{folder}': {ex.Message}", Subsystem.MediaManager);
+        }
     }
 
     // Shared opening logic for folder-dependent scan and process methods: validates the file list,

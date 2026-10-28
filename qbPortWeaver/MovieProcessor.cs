@@ -94,7 +94,9 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // map to one standalone target, so only the first would ever import. They are recognised only on
     // unambiguous evidence - two or more files in one folder with the same title and year, each with a
     // different part suffix - so a lone title such as "Title Part 2 (Year)" is never taken for a part.
-    // Every other file gets a null suffix and keeps the standalone layout.
+    // The evidence is the folder on disk, not only this list: it holds just the files ready and not yet
+    // imported, so parts finishing in different cycles would each look alone. Every other file gets a
+    // null suffix and keeps the standalone layout.
     private static List<(string File, string Title, int? Year, string? PartSuffix)> AssignPartSuffixes(
         List<(string File, string Title, int? Year)> files)
     {
@@ -108,14 +110,45 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         {
             var members = group.ToList();
             var suffixes = members.Select(f => ExtractPartSuffix(Path.GetFileName(f.File))).ToList();
-            bool isMultiPart = members.Count > 1 &&
-                               suffixes.TrueForAll(s => s is not null) &&
-                               suffixes.Distinct(StringComparer.OrdinalIgnoreCase).Count() == suffixes.Count;
+            bool isMultiPart = suffixes.TrueForAll(s => s is not null) && IsMultiPartGroup(members[0], members.Select(f => f.File));
 
             for (int i = 0; i < members.Count; i++)
                 result.Add((members[i].File, members[i].Title, members[i].Year, isMultiPart ? suffixes[i] : null));
         }
         return result;
+    }
+
+    // Applies the multi-part rule to the group's files plus every video file beside them with the same
+    // title and year, imported or still being written. A folder that cannot be listed leaves the group
+    // to decide alone.
+    private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
+    {
+        var files = new HashSet<string>(groupFiles, StringComparer.OrdinalIgnoreCase);
+        var folder = Path.GetDirectoryName(first.File);
+        if (!string.IsNullOrEmpty(folder))
+        {
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(folder))
+                {
+                    if (!FileNameParser.IsVideoFile(path)) continue;
+                    var fileName = Path.GetFileName(path);
+                    var (title, year) = FileNameParser.ParseTitleYear(fileName);
+                    if (year == first.Year && string.Equals(title, first.Title, StringComparison.OrdinalIgnoreCase)
+                        && !IsBarePartName(fileName, title, year))
+                        files.Add(path);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogDebug($"MovieProcessor.IsMultiPartGroup: Could not list '{folder}': {ex.Message}", Subsystem.MediaManager);
+            }
+        }
+
+        var suffixes = files.Select(f => ExtractPartSuffix(Path.GetFileName(f))).ToList();
+        return suffixes.Count > 1 &&
+               suffixes.TrueForAll(s => s is not null) &&
+               suffixes.Distinct(StringComparer.OrdinalIgnoreCase).Count() == suffixes.Count;
     }
 
     // Shared opening logic for folder-dependent scan and process methods: validates the file list,

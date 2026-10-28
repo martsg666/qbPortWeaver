@@ -63,7 +63,8 @@ public partial class WhatsNewForm : Form
         "closing it are tried, instead of the recovery going on as if it had closed.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
-        "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
+        "are now recognised, also when the parts finish at different times, keep their part numbers on Re-match " +
+        "and import into one folder. Import " +
         "Now brings subtitles along, and every import moves subtitles only with a video it placed. Season 0 " +
         "episodes, where Plex and TMDB put a show's specials, are now imported too.\n\n" +
         "Fixed: Media Manager status messages\n" +

@@ -205,7 +205,7 @@ public sealed class TmdbClient(string apiKey)
     }
 
     // Thrown for a lookup once TMDB has failed in a way every later lookup of the run would repeat: the
-    // key was rejected (401/403), TMDB could not be reached, or it timed out twice in a row. Each later
+    // key was rejected (401/403), or TMDB could not be reached or timed out twice in a row. Each later
     // call then fails at once instead of spending a request - up to the 10 s timeout - and a Warn per title.
     // Public only because exception types must be (S3871).
     public sealed class TmdbUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
@@ -218,21 +218,24 @@ public sealed class TmdbClient(string apiKey)
     /// were skipped rather than answered.</summary>
     internal bool WasUnavailable => _unavailable;
 
-    // Consecutive timeouts. One alone is a slow answer, not an outage - it costs that one title - so the run
-    // is only given up on at the second in a row. Reset by any successful request.
-    private int _consecutiveTimeouts;
-    private const int TimeoutsBeforeUnavailable = 2;
+    // Consecutive transport failures: timeouts, and requests that got no HTTP answer at all. One alone is a
+    // slow answer or a dropped connection (a VPN reconnect resets it mid-run), not an outage - it costs that
+    // one title - so the run is only given up on at the second in a row. Reset by any successful request.
+    private int _consecutiveTransportFailures;
+    private const int TransportFailuresBeforeUnavailable = 2;
 
-    // Whether a failure means every later lookup of the run would fail the same way.
+    // Whether a failure means every later lookup of the run would fail the same way. Counts transport
+    // failures as a side effect; called from an exception filter, which runs inside the limiter hold, so
+    // the count is serialised with the request that failed.
     private bool MeansUnavailable(Exception ex, CancellationToken cancellationToken)
     {
         switch (ex)
         {
-            case HttpRequestException { StatusCode: null }:                                 // could not be reached
             case HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden }:
                 return true;
+            case HttpRequestException { StatusCode: null }:                                 // could not be reached
             case TaskCanceledException when !cancellationToken.IsCancellationRequested:     // timed out
-                return Interlocked.Increment(ref _consecutiveTimeouts) >= TimeoutsBeforeUnavailable;
+                return Interlocked.Increment(ref _consecutiveTransportFailures) >= TransportFailuresBeforeUnavailable;
             default:
                 return false;
         }
@@ -267,7 +270,7 @@ public sealed class TmdbClient(string apiKey)
             {
                 result = await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
             }
-            Interlocked.Exchange(ref _consecutiveTimeouts, 0);
+            Interlocked.Exchange(ref _consecutiveTransportFailures, 0);
             LogManager.Instance.ClearLogState(UnavailableStateKey);
             return result;
         }

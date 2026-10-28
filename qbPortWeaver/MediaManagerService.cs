@@ -138,11 +138,14 @@ public static class MediaManagerService
         await Task.WhenAll(classified.Select(c =>
             ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken))).ConfigureAwait(false);
 
+        // Only the folders read this run: an offline one has nothing to clean up, and checking it again
+        // would cost another existence check against an unreachable host.
+        string[] readSources = [.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)];
         if (deleteEmptyFolders)
-            CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
+            CleanupSourceFolders(readSources, dryRun, cancellationToken);
 
         TmdbCacheManager.Save();
-        MediaImporter.SaveSourceCache([.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)]);
+        MediaImporter.SaveSourceCache(readSources);
         MediaImporter.SaveLibraryCache();
         importSw.Stop();
         LogManager.Instance.LogMessage($"Import completed: {TextFormat.Pluralize(total, "file")} in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
@@ -603,9 +606,11 @@ public static class MediaManagerService
                 {
                     classified.Add((e.Folder, ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                // Parallel.ForEach wraps what its body throws in an AggregateException, so the folder is
+                // skipped when every inner failure is a file-system one, as a direct throw would be.
+                catch (AggregateException ex) when (IsFileSystemFailure(ex))
                 {
-                    LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Flatten().InnerExceptions[0].Message}", LogLevel.Warn, Subsystem.MediaManager);
                     classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [], FolderTvFiles: [])));
                 }
             }
@@ -622,6 +627,9 @@ public static class MediaManagerService
             return classified;
         }, cancellationToken);
     }
+
+    private static bool IsFileSystemFailure(AggregateException ex) =>
+        ex.Flatten().InnerExceptions.All(inner => inner is IOException or UnauthorizedAccessException);
 
     // Fingerprints candidates in parallel, filters out files already in the library, and classifies
     // the remainder into movie and TV episode file paths in a single pass.

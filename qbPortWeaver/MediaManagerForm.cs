@@ -273,6 +273,10 @@ public partial class MediaManagerForm : Form
 
         dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
         dgvResults_SelectionChanged(dgvResults, EventArgs.Empty); // refresh detail panel for the selected row
+        // Ahead of the verified count, which would send the user to edit names that were never looked up.
+        // The log may hold only Debug lines for it, when an earlier run already raised the warning.
+        if (tmdb.WasUnavailable)
+            return "TMDB could not be reached or rejected the API key, so some rows were not re-matched. See the log for details.";
         int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
                      + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
         return verified == total
@@ -370,7 +374,7 @@ public partial class MediaManagerForm : Form
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (TmdbClient.TmdbUnavailableException ex)
         {
-            // TMDB rejected the key, could not be reached, or timed out twice running: the client now fails
+            // TMDB rejected the key, or failed to answer twice running: the client now fails
             // the remaining rows at once, so they are reported once, as the import's lookups are.
             TmdbClient.ReportUnavailable($"Re-match {mediaLabel} '{title}'", ex);
             return (null, false);
@@ -494,7 +498,9 @@ public partial class MediaManagerForm : Form
         // Ahead of the grid summary, which would call the skipped rows titles with "no TMDB match" and send
         // the user to edit names that were never actually looked up.
         if (result.TmdbUnavailable)
-            return "TMDB could not be reached or rejected the API key, so some files were not looked up. See the log for details.";
+            return result.UnreadableSourceFolders.Length > 0
+                ? "Some source folders could not be read, and TMDB could not be reached or rejected the API key. See the log for details."
+                : "TMDB could not be reached or rejected the API key, so some files were not looked up. See the log for details.";
         return UnreadableSourcesStatus(result, sourceFolders.Length);
     }
 
@@ -633,7 +639,7 @@ public partial class MediaManagerForm : Form
         // A source folder the re-scan could not read hides its files, which would otherwise count as
         // imported. Only the folders that held a file sent to import matter: an offline folder the import
         // never touched says nothing about this result, and must not hide the failure count below.
-        int unconfirmed = remaining.UnreadableSourceFolders.Count(folder => toApply.Any(t => IsUnderFolder(t.OriginalPath, folder)));
+        int unconfirmed = remaining.UnreadableSourceFolders.Count(folder => toApply.Any(t => MediaImporter.IsUnderFolder(t.OriginalPath, folder)));
         if (unconfirmed > 0)
             return $"Import finished, but {TextFormat.Pluralize(unconfirmed, "source folder")} could not be read to confirm it - see the log.";
 
@@ -641,15 +647,15 @@ public partial class MediaManagerForm : Form
         // the re-scan, but nothing was attempted for it.
         var applied = new HashSet<string>(toApply.Select(t => t.OriginalPath), StringComparer.OrdinalIgnoreCase);
         int failed = remaining.Proposals.Count(r => applied.Contains(r.OriginalPath));
+        // The failure count stays right, since imported files drop out before any lookup, but the rows left
+        // unchecked would otherwise show as "no TMDB match" when they were never looked up.
+        if (remaining.TmdbUnavailable)
+            return failed == 0
+                ? "Done - all selected files imported, but TMDB could not be reached for the rest. See the log."
+                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported, and TMDB could not be reached for the rest. See the log.";
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";
-    }
-
-    private static bool IsUnderFolder(string path, string folder)
-    {
-        string root = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
-        return path.StartsWith(root, StringComparison.OrdinalIgnoreCase);
     }
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.

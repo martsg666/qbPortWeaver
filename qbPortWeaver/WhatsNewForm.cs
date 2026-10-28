@@ -61,7 +61,7 @@ public partial class WhatsNewForm : Form
         "Fixed: Media Manager status messages\n" +
         "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
-        "written to the log. When TMDB cannot be reached, rejects the API key, or times out twice in a row, " +
+        "written to the log. When TMDB rejects the API key, or cannot be reached or times out twice in a row, " +
         "the rest of that run's lookups are skipped with one warning, instead of a warning and a wait for " +
         "every title, and Scan Now says so rather than listing the files as unmatched.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +

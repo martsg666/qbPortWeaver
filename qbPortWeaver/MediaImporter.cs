@@ -250,11 +250,11 @@ internal static partial class MediaImporter
             LogLevel.Warn, Subsystem.MediaManager);
 
     /// <summary>Logs that a file already at the destination could not be compared with the source, so the
-    /// import of that file is skipped this cycle. Info, not the conflict Warn: nothing is known to differ,
+    /// import of that file is skipped for now. Info, not the conflict Warn: nothing is known to differ,
     /// and the comparison usually works on the next cycle. Shared by both import sites.</summary>
     internal static void LogUncomparedDestination(string destinationPath) =>
         LogManager.Instance.LogMessage(
-            $"Could not compare '{Path.GetFileName(destinationPath)}' with the file already in the library - skipped this cycle",
+            $"Could not compare '{Path.GetFileName(destinationPath)}' with the file already in the library - skipped for now",
             LogLevel.Info, Subsystem.MediaManager);
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
@@ -807,11 +807,7 @@ internal static partial class MediaImporter
     // in this file (GetOrComputeLibraryFingerprint, IsFileReadyForImport).
     private static void PruneLibraryCache(string[] walkedRoots, HashSet<string> seenPaths)
     {
-        // GetFullPath matches the FileInfo.FullName keys; a drive root such as "D:\" already ends in a separator
-        var rootPrefixes = walkedRoots
-            .Select(Path.GetFullPath)
-            .Select(r => Path.EndsInDirectorySeparator(r) ? r : r + Path.DirectorySeparatorChar)
-            .ToArray();
+        var rootPrefixes = walkedRoots.Select(FolderPrefix).ToArray();
 
         List<string> stale;
         lock (_libraryLock)
@@ -819,7 +815,7 @@ internal static partial class MediaImporter
             if (_libraryCache is null) return;
             stale = _libraryCache.Keys
                 .Where(k => !seenPaths.Contains(k)
-                         && Array.Exists(rootPrefixes, p => k.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                         && IsUnderAnyPrefix(k, rootPrefixes))
                 .ToList();
             if (stale.Count == 0) return;
 
@@ -992,8 +988,9 @@ internal static partial class MediaImporter
 
             if (!wasDirty && !mightHaveStaleEntries) return;
 
+            var readPrefixes = readFolders.Select(FolderPrefix).ToArray();
             var toSave = mightHaveStaleEntries
-                ? snapshot.Where(kv => !IsUnderAnyFolder(kv.Key, readFolders) || File.Exists(kv.Key))
+                ? snapshot.Where(kv => !IsUnderAnyPrefix(kv.Key, readPrefixes) || File.Exists(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                 : snapshot;
 
@@ -1019,9 +1016,20 @@ internal static partial class MediaImporter
         }
     }
 
-    // Whether path lies inside one of folders (a prefix match on whole path segments).
-    private static bool IsUnderAnyFolder(string path, IReadOnlyCollection<string> folders) =>
-        folders.Any(f => path.StartsWith(Path.TrimEndingDirectorySeparator(f) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    // A folder as a path prefix that matches whole segments only. GetFullPath matches the FileInfo.FullName
+    // keys, and a drive root such as "D:\" already ends in a separator, so it is not given a second one.
+    internal static string FolderPrefix(string folder)
+    {
+        string root = Path.GetFullPath(folder);
+        return Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+    }
+
+    /// <summary>Whether <paramref name="path"/> lies inside <paramref name="folder"/>, on whole path segments.</summary>
+    internal static bool IsUnderFolder(string path, string folder) =>
+        path.StartsWith(FolderPrefix(folder), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUnderAnyPrefix(string path, string[] prefixes) =>
+        Array.Exists(prefixes, p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Persists the library cache to disk.

@@ -243,6 +243,10 @@ public sealed class PortSyncService
     // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
     // hold but not the episode; cleared by a matching lookup, an open port or a provider with no forward.
     private bool _vpnExitAnnounced;
+    // Whether the "reachable again" line has gone out for the current exit-address announcement: an open
+    // result inside the settle window keeps the announcement, and the checks after it would otherwise
+    // repeat the line for the same outage. Cleared whenever the announcement is made.
+    private bool _exitReachableReported;
     // The provider the last successful forward-address read came from, so a provider that cannot read its
     // forward right now is told apart from a switch to one that reports none (see CheckVpnExitAddressAsync).
     private string? _vpnExitProvider;
@@ -1414,7 +1418,9 @@ public sealed class PortSyncService
     // online check services, so testing every cycle would be wasteful. Tests run when the port
     // changed this cycle, every cycle while a result awaits confirmation, every cycle while
     // confirmed-closed AND port-closed recovery is enabled and still armed (so the recovery counter
-    // advances each cycle up to the trigger), and otherwise every VerifyEveryNCycles cycles. A
+    // advances each cycle up to the trigger), every cycle while an exit-address mismatch has reconnects
+    // left or its final connection after a reconnect is still to be looked at (see below), and otherwise
+    // every VerifyEveryNCycles cycles. A
     // confirmed-closed port falls through to the throttle when recovery is off OR has already fired
     // (disarmed) - throttled tests still detect a reopen (which re-arms) without hammering the
     // online check services every cycle for a port that may stay closed indefinitely.
@@ -1430,9 +1436,12 @@ public sealed class PortSyncService
         // Also while an episode that has had reconnects is still open without a mismatch held: a match on
         // one of the provider's own intermediate connections ends the hold (and disarms the trigger), and the
         // final connection still has to be looked at, which nothing else would force until a port change or
-        // the throttle. Ends with the episode or the give-up.
+        // the throttle. Bounded in time as well as by the episode or the give-up: a lookup that never
+        // completes (a log that rotated the connection line away, a STUN that keeps failing) would otherwise
+        // keep the episode open, and the check every cycle, indefinitely.
         bool exitEpisodeOpen = _vpnExitAnnounced && _vpnExitReconnects > 0 && !_vpnExitGiveUpNotified
-            && portClosedRecoveryEnabled;
+            && portClosedRecoveryEnabled
+            && _vpnExitLastReconnectAt is { } lastReconnect && _uptime.Elapsed - lastReconnect < 2 * MinVpnExitReconnectSpacing;
         if (portChanged || _portCheckPendingConfirmation || exitReconnectPending || exitEpisodeOpen ||
             (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed && !_vpnExitMismatch))
         {
@@ -1482,7 +1491,7 @@ public sealed class PortSyncService
             // Read before it is cleared: a mismatch announced on undetermined results said the port could
             // not be reached without setting _portClosedAnnounced, and its Warn still wants the
             // "reachable again" line that closes it.
-            bool exitAnnounced = _vpnExitAnnounced;
+            bool exitAnnounced = _vpnExitAnnounced && !_exitReachableReported;
             ClearVpnExitMismatch(keepReconnects: true);
             await ResetSpentExitReconnectsIfMatchedAsync(config.VpnManager, cancellationToken).ConfigureAwait(false);
             HandlePortOpenResult(manager.ClientName, port, config, exitAnnounced);
@@ -1592,6 +1601,7 @@ public sealed class PortSyncService
             if (entering && !_vpnExitAnnounced)
                 RaisePortVerificationFailed(VpnExitAddress.DescribeMismatchShort(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn));
             _vpnExitAnnounced = true;
+            _exitReachableReported = false;
             // The balloon stands in for the closed-port one, so a later open result logs "reachable again".
             // Only for a mismatch found on a closed result: one found on undetermined results stands in for
             // no closed-port announcement, and a client whose test is never definite (Deluge) never produces
@@ -1764,7 +1774,10 @@ public sealed class PortSyncService
     private void HandlePortOpenResult(string clientName, int port, SyncConfig config, bool exitAnnounced)
     {
         if (_portConfirmedClosed || _portClosedAnnounced || exitAnnounced)
+        {
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
+            _exitReachableReported = true;
+        }
         else
             LogManager.Instance.LogDebug($"PortSyncService.HandlePortOpenResult: {clientName} port {port} verified open");
         _portCheckPendingConfirmation = false;

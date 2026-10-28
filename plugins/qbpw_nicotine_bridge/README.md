@@ -86,9 +86,10 @@ saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port
 connection), `reconnect_failed` (Nicotine+ raised an error while reconnecting, so it keeps
 listening on the old port until the next connection), `connect_failed` (Nicotine+ was offline
 and raised an error while connecting, so the port applies on the next connection), `setup_incomplete` (Nicotine+'s first-run
-setup is not finished, so it is not connected), and `portmapper_unsupported` or `portmapper_failed`
+setup is not finished, so it is not connected), `connect_skipped` (Nicotine+ was disconnected by
+the user, so it is not logged back in and the port applies when they connect), and `portmapper_unsupported` or `portmapper_failed`
 (an old UPnP mapping may remain). qbPortWeaver logs each one. `POST /v1/reconnect` carries the same
-list, without the two port-mapping codes.
+list, without the two port-mapping codes and `connect_skipped`: an explicit reconnect connects.
 
 `POST /v1/porttest` waits no longer than the plugin's own cap, so a slow check normally returns
 `state: "pending"` rather than timing out. The web fallback's cap applies to each network step and

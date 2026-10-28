@@ -299,7 +299,7 @@ class CoreIO:
         if will_disable_upnp:
             self._remove_port_mapping(warnings)
 
-        action = self._reconnect(warnings) if needs_rebind else "none"
+        action = self._reconnect(warnings, respect_manual_disconnect=True) if needs_rebind else "none"
         if needs_rebind:
             self.note_port_changed()
 
@@ -311,18 +311,26 @@ class CoreIO:
         action = self._reconnect(warnings)
         return {"ok": True, "action": action, "warnings": warnings}
 
-    def _reconnect(self, warnings):
+    def _reconnect(self, warnings, respect_manual_disconnect=False):
         """Rebind the listening socket by cycling the server connection.
 
         core.reconnect() only closes an existing connection, so it is a silent no-op when
         already offline - the new port would never be picked up. Offline, connect() is the
         call that binds.
+
+        A port change does not connect a Nicotine+ the user disconnected themselves: that would
+        log them back in and start sharing unasked. The port is saved already and applies when
+        they connect. An explicit POST /v1/reconnect still connects, since that is what it asks.
         """
         if self.is_logged_in():
             if not self.capabilities.get("reconnect"):
                 warnings.append("reconnect_unsupported")
                 return "none"
             return self._cycle_connection(self._core.reconnect, "reconnect", warnings)
+
+        if respect_manual_disconnect and self._manual_disconnect:
+            warnings.append("connect_skipped")
+            return "none"
 
         if not self.capabilities.get("connect"):
             warnings.append("connect_unsupported")

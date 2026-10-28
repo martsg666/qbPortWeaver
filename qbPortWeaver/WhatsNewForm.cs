@@ -85,7 +85,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
-        "by mistake. A portable Nicotine+ running under another Windows account is now found. To get the " +
+        "by mistake. A portable Nicotine+ running under another Windows account is now found. A port change " +
+        "no longer logs Nicotine+ back in after you disconnected it yourself; the new port applies when you " +
+        "connect. To get the " +
         "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
         "Nicotine+.\n\n" +
         "Fixed: several smaller issues\n" +

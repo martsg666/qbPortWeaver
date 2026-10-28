@@ -21,6 +21,9 @@ STATE_IDLE = "idle"
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
+# Nicotine+ is logged out of the server, so nothing listens on the port: a check could only say
+# closed, and qbPortWeaver would count that toward a VPN restart that cannot bring the client back.
+STATE_OFFLINE = "offline"
 
 # Which mechanism produced the verdict. Both ultimately consult the same Soulseek service, but they
 # fail differently - the native checker can go silent, the web path can time out or return an
@@ -100,6 +103,10 @@ class PortTest:
     def request(self, port, wait_seconds):
         """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
         wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
+
+        if self._core_io.connection_state() == "disconnected":
+            return {"ok": True, "state": STATE_OFFLINE, "port": port,
+                    "result": None, "age_ms": 0, "source": None}
 
         # Prefer Nicotine+'s native checker when this version exposes it; otherwise query the Soulseek
         # port-test service directly, so reachability still works on releases without the native API.

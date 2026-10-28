@@ -98,6 +98,8 @@ check as undetermined. Treat anything other than `state: "done"` as
 undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the
 verdict came from Nicotine+'s own checker, `web` when it came from the fallback query, and `null`
 before any check has run. The two fail differently, so it is worth knowing which one answered.
+While Nicotine+ is disconnected from the server, `POST /v1/porttest` runs no check and returns
+`state: "offline"`, since nothing listens on the port until it connects.
 
 ## Settings
 

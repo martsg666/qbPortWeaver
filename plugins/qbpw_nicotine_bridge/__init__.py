@@ -19,7 +19,7 @@ from pynicotine.pluginsystem import BasePlugin
 from bridge import errors, handshake
 from bridge.core_io import INFORMATIONAL_CAPABILITIES, CoreIO
 from bridge.main_thread import MainThreadProxy
-from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
+from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, STATE_OFFLINE, PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
 
@@ -485,7 +485,10 @@ class Plugin(BasePlugin):
             self._reply_later(source, f"Could not check port {port}: {error}")
             return
 
-        if snapshot["state"] != STATE_DONE:
+        if snapshot["state"] == STATE_OFFLINE:
+            self._reply_later(source, f"Nicotine+ is not connected to the server, so port {port} is not "
+                                      "listening. Connect, then try again.")
+        elif snapshot["state"] != STATE_DONE:
             # Undetermined rather than closed: the check service was unreachable, or the verdict
             # had not arrived yet. Saying "closed" here would send the user chasing a firewall.
             self._reply_later(source, f"Could not determine whether port {port} is reachable. Try again shortly.")

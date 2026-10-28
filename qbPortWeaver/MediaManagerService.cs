@@ -606,16 +606,21 @@ public static class MediaManagerService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var (items, unreadFiles) = ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken);
-                classified.Add((e.Folder, items));
-                // Every file failing to read is either a folder of files still being written, or a share
-                // that dropped after it was listed - classification waits for the library build, so that
-                // window is real. Told apart by asking for the folder itself: a dropped share joins the
-                // unreadable folders, so the window does not report its files as already imported.
-                if (unreadFiles > 0 && unreadFiles == e.Candidates.Count && !MediaImporter.DirectoryExistsWithSmbRetry(e.Folder))
+                // A file that could not be read is either one still being written, or a share that dropped
+                // after it was listed - classification waits for the library build, so that window is real.
+                // Any unread file, not all of them: a file whose fingerprint is cached needs no read, so a
+                // folder with history never fails every file. Told apart by asking for the folder itself,
+                // which costs one existence check only when something failed. A dropped share joins the
+                // unreadable folders with nothing classified, so neither the window reports its files as
+                // imported nor the import works on, or prunes the cache of, an unreachable host.
+                if (unreadFiles > 0 && !MediaImporter.DirectoryExistsWithSmbRetry(e.Folder))
                 {
                     LogManager.Instance.LogMessage($"Source folder '{e.Folder}' could not be read after it was listed - skipped", LogLevel.Warn, Subsystem.MediaManager);
                     lost.Add(e.Folder);
+                    classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [], FolderTvFiles: [])));
+                    continue;
                 }
+                classified.Add((e.Folder, items));
             }
 
             int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);

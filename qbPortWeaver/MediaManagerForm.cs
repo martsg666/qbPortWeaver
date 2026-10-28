@@ -603,15 +603,6 @@ public partial class MediaManagerForm : Form
         if (IsDisposed) return null;
 
         var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
-        if (chkDeleteEmptyFolders.Checked)
-        {
-            lblScanStatus.Text = "Cleaning up empty folders…";
-            // Through the media gate like the import before it, so a sync-cycle import cannot run on the
-            // same folders at the same time.
-            await MediaManagerService.CleanupSourceFoldersAsync(sourceFolders, CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
-        }
-
-        if (IsDisposed) return null;
 
         lblScanStatus.Text = "Re-scanning…";
         BeginProgress();
@@ -620,6 +611,18 @@ public partial class MediaManagerForm : Form
             txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), new(CreateScanProgress("Re-scanning…"), CreateWaitProgress("Re-scanning…")), cancellationToken);
 
         if (IsDisposed) return null;
+
+        if (chkDeleteEmptyFolders.Checked)
+        {
+            lblScanStatus.Text = "Cleaning up empty folders…";
+            // After the re-scan, and only over the folders it could read, as the sync-cycle import does: an
+            // offline folder has nothing to clean and would cost another existence check against an
+            // unreachable host. Through the media gate like the import before it, so a sync-cycle import
+            // cannot run on the same folders at the same time.
+            string[] readFolders = [.. sourceFolders.Except(remaining?.UnreadableSourceFolders ?? [], StringComparer.OrdinalIgnoreCase)];
+            await MediaManagerService.CleanupSourceFoldersAsync(readFolders, CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
+            if (IsDisposed) return null;
+        }
 
         if (remaining is null)
         {

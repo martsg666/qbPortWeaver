@@ -1304,7 +1304,7 @@ public partial class MainForm : Form
             onClosed?.Invoke(frm);
             setter(null);
         };
-        frm.Show();
+        frm.Show(); // NOSONAR S6966 - non-modal is intentional: ShowOrActivate keeps one live instance and re-activates it
         onActivated?.Invoke(frm);
     }
 

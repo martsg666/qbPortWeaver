@@ -120,7 +120,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
 
     // Applies the multi-part rule to the group's files plus every video file beside them with the same
     // title and year, imported or still being written. A folder that cannot be listed leaves the group
-    // to decide alone.
+    // to decide alone. The part numbers must run from 1 with no gap: two versions of one movie
+    // ("DVD5" and "DVD9") carry a part token too, and stacking them would play one after the other.
     private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
     {
         var files = new HashSet<string>(groupFiles, StringComparer.OrdinalIgnoreCase);
@@ -146,9 +147,12 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         }
 
         var suffixes = files.Select(f => ExtractPartSuffix(Path.GetFileName(f))).ToList();
-        return suffixes.Count > 1 &&
-               suffixes.TrueForAll(s => s is not null) &&
-               suffixes.Distinct(StringComparer.OrdinalIgnoreCase).Count() == suffixes.Count;
+        if (suffixes.Count < 2 || !suffixes.TrueForAll(s => s is not null)) return false;
+
+        // A suffix is a letters-only token followed by the part number, so its digits are that number.
+        var numbers = suffixes.Select(s => int.TryParse(new string(s!.Where(char.IsDigit).ToArray()), out var n) ? n : 0)
+                              .Order().ToList();
+        return numbers.SequenceEqual(Enumerable.Range(1, numbers.Count));
     }
 
     // Shared opening logic for folder-dependent scan and process methods: validates the file list,

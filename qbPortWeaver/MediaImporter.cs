@@ -860,6 +860,21 @@ internal static partial class MediaImporter
             return _libraryFingerprints?.Contains(fingerprint) ?? false;
     }
 
+    /// <summary>Like <see cref="IsAlreadyInLibrary(string)"/>, but only answers for a
+    /// <paramref name="destinationPath"/> inside one of the library folders the index was built for: Import
+    /// Now may target a library typed in the window but not saved, which the index does not describe, and
+    /// a file found in another library is no reason to skip it there.</summary>
+    internal static bool IsAlreadyInLibraryUnder(string fingerprint, string destinationPath)
+    {
+        lock (_libraryLock)
+        {
+            if (_libraryFingerprints is null) return false;
+            bool indexedLibrary = (!string.IsNullOrWhiteSpace(_lastMoviesLibraryPath) && IsUnderFolder(destinationPath, _lastMoviesLibraryPath))
+                || (!string.IsNullOrWhiteSpace(_lastTvShowsLibraryPath) && IsUnderFolder(destinationPath, _lastTvShowsLibraryPath));
+            return indexedLibrary && _libraryFingerprints.Contains(fingerprint);
+        }
+    }
+
     // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
     // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
     // the second waits on the Lazy rather than issuing a redundant read.

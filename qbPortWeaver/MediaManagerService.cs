@@ -339,6 +339,23 @@ public static class MediaManagerService
         => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress?.Items, cancellationToken), cancellationToken),
             progress?.Waiting, cancellationToken);
 
+    // Whether the proposal's file is already in the library it targets. A source that cannot be read
+    // (moved away by a Move import since the scan, or locked) answers false, so AddFileToLibrary reports
+    // it the way it reports any other unreadable source.
+    private static bool ImportedSinceScan(MediaProposal proposal)
+    {
+        try
+        {
+            return MediaImporter.IsAlreadyInLibraryUnder(
+                MediaImporter.GetOrComputeSourceFingerprint(new FileInfo(proposal.OriginalPath)), proposal.ProposedPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MediaManagerService.ImportedSinceScan: Could not fingerprint '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}", Subsystem.MediaManager);
+            return false;
+        }
+    }
+
     private static int ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
         IProgress<(int Current, int Total, string FileName)>? progress, CancellationToken cancellationToken)
     {
@@ -356,6 +373,16 @@ public static class MediaManagerService
                 LogLevel.Info, Subsystem.MediaManager);
             try
             {
+                // The gate is free while the user reviews the grid, so a sync-cycle import may have placed
+                // this file since the scan, under its own name: an edited name or an unsaved folder setting
+                // gives a different target, which AddFileToLibrary's same-path check cannot see.
+                if (ImportedSinceScan(proposal))
+                {
+                    LogManager.Instance.LogMessage(
+                        $"Skipped '{Path.GetFileName(proposal.OriginalPath)}' - already in the library (imported since the scan)",
+                        LogLevel.Info, Subsystem.MediaManager);
+                    continue;
+                }
                 // Subtitles follow the video, as on the sync cycle. This is the only chance: once
                 // the video is in the library the cycle skips its source, so a subtitle left behind
                 // here would never be imported. Naming from the proposed path also covers a

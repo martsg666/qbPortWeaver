@@ -556,10 +556,12 @@ public static class MediaManagerService
 
         var (classified, lostFolders) = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
         unreadableFolders.AddRange(lostFolders);
-        // A folder listed inside an unreadable one was not read either: it is walked only as part of its
-        // outer folder, so it joins the unreadable ones, and the cache keeps its entries for the next run.
+        // A folder listed inside an unreadable one, or the same folder spelled another way, was not read
+        // either: it is walked only as part of that folder (OutermostFolders lists one spelling), so it joins
+        // the unreadable ones, and the cache keeps its entries for the next run.
         unreadableFolders.AddRange(sourceFolders.Where(f => !unreadableFolders.Contains(f, StringComparer.OrdinalIgnoreCase)
-            && unreadableFolders.Any(u => MediaImporter.IsUnderFolder(FolderKey(f), u))).ToList());
+            && unreadableFolders.Any(u => string.Equals(FolderKey(f), FolderKey(u), StringComparison.OrdinalIgnoreCase)
+                || MediaImporter.IsUnderFolder(FolderKey(f), u))).ToList());
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
         return (tmdb, classified, total, [.. unreadableFolders]);

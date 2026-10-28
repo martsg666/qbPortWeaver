@@ -55,7 +55,8 @@ public partial class WhatsNewForm : Form
         "the port has stayed closed for as long as its checks normally take, so the quick checks that follow " +
         "a reconnect no longer restart the VPN while the client is still reconnecting; the Status panel " +
         "shows it holding rather than a count past its target. Switching VPN provider or adapter also ends " +
-        "a run of recoveries, so the new one is not suspended for restarts it never had. A closed port is " +
+        "a run of recoveries, so the new one is not suspended for restarts it never had, and starts the " +
+        "closed-port checks again, so its first closed check cannot trigger a restart. A closed port is " +
         "confirmed only by a check at least half a sync interval after the first, so the quick re-check after " +
         "a reconnect no longer reports the client still settling as an outage. A VPN client or service " +
         "that could not be closed during a recovery is now reported as such, and the fallback ways of " +

@@ -1140,10 +1140,12 @@ public sealed class PortSyncService
         if (_recoveryContext is not null && !string.Equals(_recoveryContext, recoveryContext, StringComparison.OrdinalIgnoreCase))
         {
             _recoveryGate.ResetForNewContext();
+            // The closed-port sequence starts afresh too: a confirmation, count or time floor from the old
+            // setup would let the new one's first closed check (its client still rebinding) trigger recovery.
+            RestartClosedPortSequence();
             // So does an exit-address episode: its reconnects, give-up and announcement were for the old
             // setup, and two setups can report the same provider name (a NAT-PMP adapter and Static port on
             // it), so the provider check in EndVpnExitHoldWithoutForward cannot tell them apart.
-            if (_vpnExitMismatch) RestartClosedPortSequence();
             ClearVpnExitMismatch();
         }
         _recoveryContext = recoveryContext;
@@ -1785,7 +1787,8 @@ public sealed class PortSyncService
     }
 
     // Makes the next closed result a first, unconfirmed one again. Used when an exit-address hold ends at
-    // a closed check, when the VPN is found down, and on a switch to a provider with no forward address:
+    // a closed check, when the VPN is found down, on a change of provider or adapter, and on a switch to a
+    // provider with no forward address:
     // the confirmed state survives a port change by design, so without this the first check after a
     // reconnect - usually the client still reconnecting - would count as confirmed. The
     // outage itself stays announced (_portClosedAnnounced), so a later reopen is still reported. The time

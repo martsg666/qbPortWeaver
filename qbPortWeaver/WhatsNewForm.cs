@@ -75,7 +75,7 @@ public partial class WhatsNewForm : Form
         "re-read every library file, and closing the Media Manager during a scan no longer leaves the " +
         "next imports using an out-of-date view of the library. The library is now read while the source " +
         "folders are listed rather than before, so a scan over network shares finishes sooner. A source folder " +
-        "listed inside another is scanned once with it, and empty-folder cleanup no longer deletes it.\n\n" +
+        "listed inside another is scanned once with it, and empty-folder cleanup no longer deletes it, nor a library folder kept inside a source folder.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +

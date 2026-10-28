@@ -142,7 +142,7 @@ public static class MediaManagerService
         // would cost another existence check against an unreachable host.
         string[] readSources = [.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)];
         if (deleteEmptyFolders)
-            CleanupSourceFolders(readSources, dryRun, cancellationToken);
+            CleanupSourceFolders(readSources, [moviesLibraryPath, tvShowsLibraryPath], dryRun, cancellationToken);
 
         TmdbCacheManager.Save();
         MediaImporter.SaveSourceCache(readSources);
@@ -291,22 +291,24 @@ public static class MediaManagerService
     /// folder another operation is moving files out of or listing. For the window's Import Now, which used
     /// to run this outside the gate.
     /// </summary>
-    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, string[] libraryFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
         => RunExclusiveAsync(() => Task.Run(() =>
         {
-            CleanupSourceFolders(sourceFolders, dryRun: false, cancellationToken);
+            CleanupSourceFolders(sourceFolders, libraryFolders, dryRun: false, cancellationToken);
             return true;
         }, cancellationToken), waiting, cancellationToken);
 
     // Runs folder cleanup for all configured source folders. A source folder listed inside another is
     // cleaned as part of the outer one, and is itself never deleted, even when empty: it is configured.
-    private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
+    // Nor is a library folder placed inside a source folder, or anything under one: a new, still-empty
+    // library folder deleted here would make every later import fail to read the library.
+    private static void CleanupSourceFolders(string[] sourceFolders, string[] libraryFolders, bool dryRun, CancellationToken cancellationToken)
     {
-        var configured = new HashSet<string>(sourceFolders.Select(f => Path.TrimEndingDirectorySeparator(Path.GetFullPath(f))), StringComparer.OrdinalIgnoreCase);
+        var keep = new FolderKeepSet(sourceFolders, libraryFolders);
         foreach (var folder in OutermostFolders(sourceFolders))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            try { CleanupEmptyFolders(folder, dryRun, configured); }
+            try { CleanupEmptyFolders(folder, dryRun, keep); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -381,7 +383,7 @@ public static class MediaManagerService
     // become empty only because the import moved their last file out this cycle are in the snapshot and
     // will be caught. Folders created or emptied by external processes after the snapshot are not seen
     // until the next cycle. The root folder itself is never deleted.
-    internal static void CleanupEmptyFolders(string rootFolder, bool dryRun, IReadOnlySet<string> keep)
+    internal static void CleanupEmptyFolders(string rootFolder, bool dryRun, FolderKeepSet keep)
     {
         if (!MediaImporter.DirectoryExistsWithSmbRetry(rootFolder)) return;
 
@@ -402,7 +404,7 @@ public static class MediaManagerService
             return;
         }
 
-        int deleted = directories.Where(dir => !keep.Contains(Path.TrimEndingDirectorySeparator(dir)))
+        int deleted = directories.Where(dir => !keep.Protects(dir))
             .OrderByDescending(d => d.Length)
             .Count(dir => TryCleanupFolder(dir, dryRun));
 
@@ -519,6 +521,10 @@ public static class MediaManagerService
 
         var (classified, lostFolders) = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
         unreadableFolders.AddRange(lostFolders);
+        // A folder listed inside an unreadable one was not read either: it is walked only as part of its
+        // outer folder, so it joins the unreadable ones, and the cache keeps its entries for the next run.
+        unreadableFolders.AddRange(sourceFolders.Where(f => !unreadableFolders.Contains(f, StringComparer.OrdinalIgnoreCase)
+            && unreadableFolders.Any(u => MediaImporter.IsUnderFolder(FolderKey(f), u))).ToList());
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
         return (tmdb, classified, total, [.. unreadableFolders]);
@@ -527,17 +533,40 @@ public static class MediaManagerService
     // The folders that are not inside another one in the list. A source folder listed inside another
     // would otherwise be walked twice: every file in it reported as a duplicate of itself each cycle, and
     // counted twice against the source cache, so its stale entries were never pruned.
+    // Two spellings of one folder (case, separators, a trailing one) count as one, the first kept, so it is
+    // neither walked twice nor, comparing each against the other, dropped altogether.
     internal static List<string> OutermostFolders(IReadOnlyCollection<string> folders)
     {
-        var outermost = new List<string>(folders.Count);
-        foreach (var folder in folders)
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var distinct = folders.Where(f => seen.Add(FolderKey(f))).ToList();
+        var outermost = new List<string>(distinct.Count);
+        foreach (var folder in distinct)
         {
-            string? outer = folders.FirstOrDefault(other => !string.Equals(other, folder, StringComparison.OrdinalIgnoreCase)
-                && MediaImporter.IsUnderFolder(Path.GetFullPath(folder), other));
+            string? outer = distinct.FirstOrDefault(other => !ReferenceEquals(other, folder)
+                && MediaImporter.IsUnderFolder(FolderKey(folder), other));
             if (outer is null) outermost.Add(folder);
             else LogManager.Instance.LogDebug($"MediaManagerService.OutermostFolders: '{folder}' is inside source folder '{outer}' - scanned with it", Subsystem.MediaManager);
         }
         return outermost;
+    }
+
+    // One spelling for comparing folders: full, without a trailing separator.
+    private static string FolderKey(string folder) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+
+    /// <summary>The folders empty-folder cleanup must not delete: every configured source folder, and
+    /// every library folder with all it holds.</summary>
+    internal sealed class FolderKeepSet(IEnumerable<string> sourceFolders, IEnumerable<string> libraryFolders)
+    {
+        private readonly HashSet<string> _sources = new(sourceFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey), StringComparer.OrdinalIgnoreCase);
+        private readonly string[] _libraries = [.. libraryFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey)];
+
+        // dir arrives in the root's own spelling (Directory.GetDirectories), so it is normalised first.
+        internal bool Protects(string dir)
+        {
+            string key = FolderKey(dir);
+            return _sources.Contains(key)
+                || Array.Exists(_libraries, lib => string.Equals(key, lib, StringComparison.OrdinalIgnoreCase) || MediaImporter.IsUnderFolder(key, lib));
+        }
     }
 
     // Splits the configured source folders into those that can be reached and those that cannot, warning

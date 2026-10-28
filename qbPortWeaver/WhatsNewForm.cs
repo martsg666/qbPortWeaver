@@ -57,7 +57,9 @@ public partial class WhatsNewForm : Form
         "shows it holding rather than a count past its target. Switching VPN provider or adapter also ends " +
         "a run of recoveries, so the new one is not suspended for restarts it never had. A closed port is " +
         "confirmed only by a check at least half a sync interval after the first, so the quick re-check after " +
-        "a reconnect no longer reports the client still settling as an outage.\n\n" +
+        "a reconnect no longer reports the client still settling as an outage. A VPN client or service " +
+        "that could not be closed during a recovery is now reported as such, and the fallback ways of " +
+        "closing it are tried, instead of the recovery going on as if it had closed.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +

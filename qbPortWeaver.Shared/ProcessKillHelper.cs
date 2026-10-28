@@ -16,7 +16,8 @@ public enum ProcessKillOutcome
     KilledByTaskkill,
     /// <summary>Stage 3 (retry of <see cref="Process.Kill(bool)"/>) succeeded and the process exited within the timeout.</summary>
     KilledByProcessKillRetry,
-    /// <summary>Process is access-denied or protected (Win32Exception) - no further escalation will help.</summary>
+    /// <summary>Process is access-denied or protected (a Win32Exception, or an AggregateException of them while
+    /// the target is still running) - no further escalation will help.</summary>
     AccessDenied,
     /// <summary>All three escalation stages completed without the process exiting within their timeouts.</summary>
     StillRunning,
@@ -69,6 +70,14 @@ public static class ProcessKillHelper
         {
             return new ProcessKillResult(ProcessKillOutcome.AccessDenied, null);
         }
+        catch (AggregateException ex) when (IsAccessDeniedToTarget(process, ex))
+        {
+            return new ProcessKillResult(ProcessKillOutcome.AccessDenied, null);
+        }
+        catch (AggregateException)
+        {
+            // Part of the tree resisted; the wait below decides whether the target itself is gone.
+        }
         if (process.WaitForExit(timeoutMs))
             return new ProcessKillResult(ProcessKillOutcome.KilledByProcessKill, null);
 
@@ -105,8 +114,24 @@ public static class ProcessKillHelper
         {
             return new ProcessKillResult(ProcessKillOutcome.AccessDenied, taskkillError);
         }
+        catch (AggregateException ex) when (IsAccessDeniedToTarget(process, ex))
+        {
+            return new ProcessKillResult(ProcessKillOutcome.AccessDenied, taskkillError);
+        }
+        catch (AggregateException)
+        {
+            // Part of the tree resisted; the wait below decides whether the target itself is gone.
+        }
         return process.WaitForExit(timeoutMs)
             ? new ProcessKillResult(ProcessKillOutcome.KilledByProcessKillRetry, taskkillError)
             : new ProcessKillResult(ProcessKillOutcome.StillRunning, taskkillError);
     }
+
+    // Kill(entireProcessTree: true) does not throw Win32Exception itself: it collects the failure of
+    // every process in the tree, the target's included, into one AggregateException. Access denied to
+    // the target is when it is still running and every failure was a Win32Exception; anything else
+    // (a child that resisted, a target that died anyway) is left to the exit wait. A HasExited that
+    // throws makes the filter false, which falls through to that wait as well.
+    private static bool IsAccessDeniedToTarget(Process process, AggregateException ex) =>
+        !process.HasExited && ex.InnerExceptions.All(e => e is Win32Exception);
 }

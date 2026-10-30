@@ -2547,10 +2547,10 @@ public sealed class PortSyncService
         _lastKnownInterfaceAddresses = (interfaceKey, live);
     }
 
-    // The promise in the address-change line. Three cases, because the rebind runs only from the
-    // port-closed path, and only while that trigger is armed: after port-closed recovery has fired for
-    // this outage it stays disarmed until a check reports the port open, so promising a rebind then
-    // would be false. Split out of CheckInterfaceAddressAsync to keep it under the complexity gate.
+    // The promise in the address-change line. Split by case, because the rebind runs only from the
+    // port-closed path, and only while that trigger is armed: after port-closed recovery has fired it
+    // stays disarmed until a check reports the port open or the VPN provider or adapter changes, so
+    // promising a rebind then would be false. Split out of CheckInterfaceAddressAsync to keep it under the complexity gate.
     private string RebindClause(string clientName, SyncConfig config)
     {
         if (!config.RebindReachable)

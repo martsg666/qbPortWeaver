@@ -457,11 +457,11 @@ public partial class StatusForm : Form
         if (s.VpnExitAddressMismatch) return DescribeExitMismatchRow(s);
 
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
-        // open. Worth its own state precisely because nothing else on the panel shows it: the port
+        // open or the VPN provider or adapter changes. Worth its own state precisely because nothing else on the panel shows it: the port
         // stays closed, the Reachable row keeps saying so, and without this the row would read "Idle"
         // while the trigger for that exact condition is spent.
-        // "the next scheduled check" rather than "the port to verify open": only the sync cycle's own
-        // verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
+        // "the next scheduled check" rather than "the port to verify open": of the checks, only the sync
+        // cycle's own verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
         // check that touches no sync state, so wording this as something the user can go and do left
         // them clicking Test Port, being told the port is open, and seeing this line unchanged.
         if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the next scheduled check";

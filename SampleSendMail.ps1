@@ -38,7 +38,8 @@ function PortClosedState($s) {
         if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax))" }
         return "Held - no matching exit address after $($s.vpnExitReconnectsMax) attempts"
     }
-    # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
+    # One-shot: once it fires it stays disarmed until a scheduled check reports the port open, or the
+    # VPN provider or adapter changes.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
     # The count has reached the threshold but a time hold keeps the trigger back: the port has not
     # stayed closed long enough yet, or an exit-address reconnect is still settling. An absolute instant.

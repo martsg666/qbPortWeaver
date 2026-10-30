@@ -81,7 +81,7 @@ internal static partial class MediaImporter
     /// <summary>Attempts to create a hardlink at <paramref name="destinationPath"/> pointing to <paramref name="sourcePath"/>.
     /// Uses the <c>\\?\</c> long-path prefix to support paths longer than MAX_PATH (260 characters).</summary>
     /// <returns><see langword="true"/> if the hardlink was created; <see langword="false"/> on failure (e.g. cross-volume, unsupported filesystem).</returns>
-    internal static bool TryCreateHardLink(string sourcePath, string destinationPath)
+    private static bool TryCreateHardLink(string sourcePath, string destinationPath)
     {
         bool result = CreateHardLink(ToExtendedPath(destinationPath), ToExtendedPath(sourcePath), nint.Zero);
         if (!result)
@@ -227,7 +227,7 @@ internal static partial class MediaImporter
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be
     // read. Never throws: it only backs the destination-conflict warning, whose job is to describe a
     // skip - a transient SMB stat failure or a file that vanished must not abort the import path.
-    internal static string DescribeFileSize(string path)
+    private static string DescribeFileSize(string path)
     {
         try
         {
@@ -329,7 +329,7 @@ internal static partial class MediaImporter
     /// <see cref="UnauthorizedAccessException"/> is treated as complete: the file exists but we lack
     /// permission (e.g. read-only attribute, network share ACL) and is not being actively written to.
     /// </summary>
-    internal static bool IsFileWriteComplete(string path)
+    private static bool IsFileWriteComplete(string path)
     {
         try
         {
@@ -351,7 +351,7 @@ internal static partial class MediaImporter
     /// and last 64 KB. For files up to 128 KB the entire content is hashed. Reading only 128 KB keeps this fast
     /// even for multi-gigabyte video files on spinning disks or network shares.
     /// </summary>
-    internal static string ComputeFingerprint(string path)
+    private static string ComputeFingerprint(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         long size = stream.Length;
@@ -828,7 +828,7 @@ internal static partial class MediaImporter
     }
 
     /// <summary>Adds a file's fingerprint to the library index and cache after a successful import. No-op if the index hasn't been built yet.</summary>
-    internal static void AddToLibraryIndex(string importedFilePath)
+    private static void AddToLibraryIndex(string importedFilePath)
     {
         try
         {
@@ -1036,7 +1036,7 @@ internal static partial class MediaImporter
 
     // A folder as a path prefix that matches whole segments only. GetFullPath matches the FileInfo.FullName
     // keys, and a drive root such as "D:\" already ends in a separator, so it is not given a second one.
-    internal static string FolderPrefix(string folder)
+    private static string FolderPrefix(string folder)
     {
         string root = Path.GetFullPath(folder);
         return Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
@@ -1118,7 +1118,7 @@ internal static partial class MediaImporter
         LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
     }
 
-    internal static string GetCacheFilePath(string fileName) =>
+    private static string GetCacheFilePath(string fileName) =>
         AppFiles.GetDataFilePath(fileName);
 
     // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).

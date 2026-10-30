@@ -8,7 +8,7 @@ namespace qbPortWeaver;
 /// Manager feature is enabled, and the Media Manager window's Scan Now and Import Now.</summary>
 public static class MediaManagerService
 {
-    internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
+    private const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
     // State keys for LogManager.LogStateChange - see there for why these conditions are not logged
     // per cycle. The two configuration gates share one key so switching between them still reports.
@@ -572,7 +572,7 @@ public static class MediaManagerService
     // counted twice against the source cache, so its stale entries were never pruned.
     // Two spellings of one folder (case, separators, a trailing one) count as one, the first kept, so it is
     // neither walked twice nor, comparing each against the other, dropped altogether.
-    internal static List<string> OutermostFolders(IReadOnlyCollection<string> folders)
+    private static List<string> OutermostFolders(IReadOnlyCollection<string> folders)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var distinct = folders.Where(f => seen.Add(FolderKey(f))).ToList();
@@ -592,7 +592,7 @@ public static class MediaManagerService
 
     /// <summary>The folders empty-folder cleanup must not delete: every configured source folder, and
     /// every library folder with all it holds.</summary>
-    internal sealed class FolderKeepSet(IEnumerable<string> sourceFolders, IEnumerable<string> libraryFolders)
+    private sealed class FolderKeepSet(IEnumerable<string> sourceFolders, IEnumerable<string> libraryFolders)
     {
         private readonly HashSet<string> _sources = new(sourceFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey), StringComparer.OrdinalIgnoreCase);
         private readonly string[] _libraries = [.. libraryFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey)];

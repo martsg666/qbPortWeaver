@@ -42,6 +42,8 @@ partial class HelpForm
         ctxHelpCopyAll   = new ToolStripMenuItem();
         ctxHelpSelectAll = new ToolStripMenuItem();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
 
         // Search controls - anchored Right so they stay at the toolbar's right edge on resize,
         // matching the log viewer. Layout from right: [4] [btnNext:26] [btnPrev:26] [4]

@@ -66,6 +66,8 @@ partial class StatusForm
         grpHistory.SuspendLayout();
         grpStats.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblAutoRecoveryLabel);
         grpStatus.Controls.Add(lblAutoRecoveryValue);

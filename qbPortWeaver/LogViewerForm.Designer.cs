@@ -51,6 +51,8 @@ partial class LogViewerForm
         toolTip        = new ToolTip(components);
         pnlToolbar.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
 
         // Filter CheckBoxes - colors applied in OnLoad after theme is determined
         AnchorStyles leftAnchor = AnchorStyles.Left | AnchorStyles.Top;

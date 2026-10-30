@@ -75,6 +75,8 @@ partial class MediaManagerForm
         pnlTmdbDetail.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)picTmdbPoster).BeginInit();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpGeneral ────────────────────────────────────────────────
         grpGeneral.Controls.Add(chkEnabled);
         grpGeneral.Controls.Add(lblTmdbApiKey);

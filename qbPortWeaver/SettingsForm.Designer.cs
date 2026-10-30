@@ -153,6 +153,8 @@ partial class SettingsForm
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).BeginInit();
         grpExtra.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpGeneral ────────────────────────────────────────────────
         grpGeneral.Controls.Add(lblClient);
         grpGeneral.Controls.Add(cboClient);

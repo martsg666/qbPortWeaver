@@ -119,8 +119,9 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     }
 
     // Applies the multi-part rule to the group's files plus every video file beside them with the same
-    // title and year, imported or still being written. A folder that cannot be listed leaves the group
-    // to decide alone. The part numbers must run from 1 with no gap: two versions of one movie
+    // title and year, imported or still being written. Only the source folder is listed: a part an
+    // earlier Move import already took out of it is not seen. A folder that cannot be listed leaves the
+    // group to decide alone. The part numbers must run from 1 with no gap: two versions of one movie
     // ("DVD5" and "DVD9") carry a part token too, and stacking them would play one after the other.
     private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
     {

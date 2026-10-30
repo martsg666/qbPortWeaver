@@ -300,7 +300,7 @@ class CoreIO:
             self._remove_port_mapping(warnings)
 
         action = self._reconnect(warnings, respect_manual_disconnect=True) if needs_rebind else "none"
-        if needs_rebind:
+        if action != "none":
             self.note_port_changed()
 
         return {"ok": True, "changed": needs_rebind, "port": port, "previous_port": previous,
@@ -424,7 +424,9 @@ class CoreIO:
     def note_port_changed(self):
         """Opens the reconnect grace window read by ``connection_state``.
 
-        Called from ``set_port`` after a rebind, so ``_last_port_change`` has one write site -
-        the same shape as the two hooks above, which are the only writers of their own fields.
+        Called from ``set_port`` once a rebind was started (not when the reconnect was skipped
+        or failed, which would report "connecting" for a client nothing is connecting), so
+        ``_last_port_change`` has one write site - the same shape as the two hooks above, which
+        are the only writers of their own fields.
         """
         self._last_port_change = time.monotonic()

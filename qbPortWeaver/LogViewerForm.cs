@@ -448,8 +448,6 @@ public partial class LogViewerForm : Form
         return TimeRanges[index].Hours is double hours ? (DateTime.Now.AddHours(-hours), null) : (null, null);
     }
 
-
-
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
     // per-line check in IsLineVisible is a single allocation-free Contains.
@@ -1621,5 +1619,4 @@ public partial class LogViewerForm : Form
             DoubleBuffered = true;
         }
     }
-
 }

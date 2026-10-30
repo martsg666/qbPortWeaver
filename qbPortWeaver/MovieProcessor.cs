@@ -144,7 +144,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         if (string.IsNullOrEmpty(folder)) return;
         try
         {
-            foreach (var path in Directory.EnumerateFiles(folder).Where(FileNameParser.IsVideoFile))
+            var paths = MediaImporter.InvokeWithSmbRetry(folder, () => Directory.GetFiles(folder));
+            foreach (var path in paths.Where(FileNameParser.IsVideoFile))
             {
                 var fileName = Path.GetFileName(path);
                 var (title, year) = FileNameParser.ParseTitleYear(fileName);

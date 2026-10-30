@@ -108,7 +108,8 @@ public partial class WhatsNewForm : Form
         "down, instead of only after the adapter had come up once. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension and shows " +
         "an & in a title as itself, and no longer takes a different file of the same size for one already " +
-        "in the library when a network share cannot be read, " +
+        "in the library when a network share cannot be read, nor saves its settings when you click OK during " +
+        "a scan or import and then choose to keep the window open, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
         "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +

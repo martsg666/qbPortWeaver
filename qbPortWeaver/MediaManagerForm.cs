@@ -20,6 +20,8 @@ public partial class MediaManagerForm : Form
     private ToolStripMenuItem? _ctxPaste;
     private bool _allIncluded = true;
     private bool _isBusy;
+    // Set by OK so the settings are saved once the close goes ahead, not before the busy prompt is answered.
+    private bool _saveOnClose;
     private bool _showOnlyReviewNeeded;
     // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
     // not reported as the import being cancelled.
@@ -100,10 +102,14 @@ public partial class MediaManagerForm : Form
 
             if (!result)
             {
+                // Staying open: a later Cancel must leave the settings as they were.
+                _saveOnClose = false;
                 e.Cancel = true;
                 return;
             }
         }
+        if (_saveOnClose)
+            SaveSettings();
         base.OnFormClosing(e);
     }
 
@@ -137,7 +143,7 @@ public partial class MediaManagerForm : Form
 
     private void btnOK_Click(object? sender, EventArgs e)
     {
-        SaveSettings();
+        _saveOnClose = true;
         Close();
     }
 

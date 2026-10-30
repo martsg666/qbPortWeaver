@@ -105,7 +105,7 @@ internal sealed class TimeRangeForm : Form
         int chrome = SystemInformation.SmallIconSize.Width              // window icon
                    + SystemInformation.CaptionButtonSize.Width          // close button
                    + (SystemInformation.FixedFrameBorderSize.Width * 2)
-                   + CaptionPadding;
+                   + LogicalToDeviceUnits(CaptionPadding);
 
         MinimumSize = new Size(caption + chrome, 0);
         // Each field at least as wide as its timestamp: the column is shared out from what the button row

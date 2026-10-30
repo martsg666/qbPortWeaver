@@ -15,6 +15,9 @@ public sealed class NatPmpManager : IVpnManager
     private const int NatPmpPort = 5351;
     private const int InitialTimeoutMs = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
     private const int MaxAttempts = 3;    // 1500ms -> 3000ms -> 6000ms
+    // QueryExternalAddressAsync runs inside the exit-address check, which has another source to fall
+    // back to, so it stops after 1500ms -> 3000ms rather than wait the full three.
+    private const int ExternalAddressQueryAttempts = 2;
     private const uint DefaultMappingLifetime = 3600; // 1 hour
 
     // RFC 6886 opcodes. UDP and TCP are independent mappings and must be requested separately,
@@ -295,15 +298,24 @@ public sealed class NatPmpManager : IVpnManager
     /// </summary>
     /// <remarks>For ProtonVPN, whose port is forwarded through NAT-PMP on its tunnel gateway: the address
     /// that gateway reports is the one the port is forwarded on, read the same way NAT-PMP mode reads it.
-    /// Two attempts rather than the full three: this runs inside the exit-address check, which only
-    /// falls back to another source when it gets nothing.</remarks>
+    /// Fewer attempts than a manager's creation (<see cref="ExternalAddressQueryAttempts"/>): this runs
+    /// inside the exit-address check, which only falls back to another source when it gets nothing.</remarks>
     internal static async Task<IPAddress?> QueryExternalAddressAsync(string adapterName, CancellationToken cancellationToken = default)
     {
         NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
             .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
-        if (nic is null || ResolveGateway(nic) is not { } gateway) return null;
+        if (nic is null)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.QueryExternalAddressAsync: '{adapterName}' not found or not up");
+            return null;
+        }
+        if (ResolveGateway(nic) is not { } gateway)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.QueryExternalAddressAsync: '{adapterName}' no resolvable gateway");
+            return null;
+        }
 
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, 2, cancellationToken).ConfigureAwait(false);
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, ExternalAddressQueryAttempts, cancellationToken).ConfigureAwait(false);
         LogProbeResultDebug("QueryExternalAddressAsync", adapterName, gateway, externalIp);
         return externalIp is null || externalIp.Equals(IPAddress.Any) ? null : externalIp;
     }

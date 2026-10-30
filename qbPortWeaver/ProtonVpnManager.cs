@@ -66,10 +66,15 @@ public sealed partial class ProtonVpnManager : IVpnManager
         System.Net.IPAddress? address = adapter is null
             ? null
             : await NatPmpManager.QueryExternalAddressAsync(adapter, cancellationToken).ConfigureAwait(false);
-        if (address is null)
+        if (address is not null)
+        {
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: forward address {address} from the '{adapter}' gateway");
+        }
+        else
         {
             EnsureServerScanned();
             address = _serverAddress;
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: gateway gave none, forward address {address?.ToString() ?? "none"} from the client log");
         }
         _forwardAddress = address;
         _forwardResolved = true;

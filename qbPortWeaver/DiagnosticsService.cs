@@ -207,13 +207,9 @@ public static class DiagnosticsService
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
         if (vpn is null)
         {
-            string hint = provider switch
-            {
-                _ when provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) =>
-                    "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP.",
-                _ => "Reselect the VPN provider in Settings."
-            };
-            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
+            results.Add(provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase)
+                ? NatPmpUnavailableResult()
+                : new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", "Reselect the VPN provider in Settings."));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable"));
             return (null, null);
         }
@@ -258,6 +254,22 @@ public static class DiagnosticsService
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
                 gatewayHint ?? "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
+    }
+
+    // Why no NAT-PMP manager could be built, in the three states the sync loop tells apart (no adapter
+    // chosen; adapter down, which the tray shows as not connected; adapter up with a gateway that does
+    // not answer, which it shows as a connected VPN with no port), so Diagnostics names what the tray names.
+    private static DiagnosticResult NatPmpUnavailableResult()
+    {
+        string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+        if (string.IsNullOrWhiteSpace(adapter))
+            return new(Checks.VpnConnection, DiagnosticStatus.Fail, "No VPN adapter configured",
+                "Select the VPN adapter in Settings → General.");
+        if (!VpnAdapter.IsUp(adapter, "DiagnosticsService.NatPmpUnavailableResult"))
+            return new(Checks.VpnConnection, DiagnosticStatus.Fail, $"'{adapter}' is not connected",
+                $"Connect the VPN that owns the '{adapter}' adapter, or select the right adapter in Settings.");
+        return new(Checks.VpnConnection, DiagnosticStatus.Fail, $"'{adapter}' gateway did not answer NAT-PMP",
+            "Ensure the VPN supports NAT-PMP port forwarding on this server, then run Diagnostics again.");
     }
 
     // The Static port setting the sync loop refuses to run without, in its order (adapter, then port),

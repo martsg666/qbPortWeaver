@@ -211,8 +211,6 @@ public static class DiagnosticsService
             {
                 _ when provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) =>
                     "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP.",
-                _ when provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) =>
-                    "Select the VPN adapter in Settings.",
                 _ => "Reselect the VPN provider in Settings."
             };
             results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));

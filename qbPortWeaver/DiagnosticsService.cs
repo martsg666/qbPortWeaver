@@ -209,7 +209,7 @@ public static class DiagnosticsService
         {
             results.AddRange(provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase)
                 ? NatPmpUnavailableResults()
-                : [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", "Reselect the VPN provider in Settings."),
+                : [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", "Reselect the VPN provider in Settings → General."),
                    new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable")]);
             return (null, null);
         }
@@ -221,7 +221,7 @@ public static class DiagnosticsService
             bool adapterBased = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) ||
                 provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase);
             string hint = adapterBased
-                ? $"Connect the VPN that owns the '{vpn.ProviderName}' adapter, or select the right adapter in Settings."
+                ? $"Connect the VPN that owns the '{vpn.ProviderName}' adapter, or select the right adapter in Settings → General."
                 : "Connect your VPN and enable port forwarding on a P2P server.";
             results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected", hint));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected"));
@@ -269,7 +269,7 @@ public static class DiagnosticsService
                     new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable")];
         if (!VpnAdapter.IsUp(adapter, "DiagnosticsService.NatPmpUnavailableResults"))
             return [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"'{adapter}' is not connected",
-                        $"Connect the VPN that owns the '{adapter}' adapter, or select the right adapter in Settings."),
+                        $"Connect the VPN that owns the '{adapter}' adapter, or select the right adapter in Settings → General."),
                     new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected")];
         return [new(Checks.VpnConnection, DiagnosticStatus.Pass, $"'{adapter}' is connected"),
                 new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"'{adapter}' gateway did not answer NAT-PMP",
@@ -464,7 +464,7 @@ public static class DiagnosticsService
         {
             return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 $"The bridge plugin is on {status.Handshake?.Url}, which differs from the saved settings",
-                "Open Settings, click the refresh button next to the Plugin token, then save.");
+                "Open Settings, click ⟳ next to the Plugin token, then save.");
         }
 
         return new(Checks.ClientPlugin, DiagnosticStatus.Pass,

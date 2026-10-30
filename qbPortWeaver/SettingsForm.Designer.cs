@@ -300,7 +300,7 @@ partial class SettingsForm
         nudStaticPort.Name     = "nudStaticPort";
         nudStaticPort.Size     = new Size(80, 23);
         nudStaticPort.TabIndex = 14;
-        // Notify and show-update rows follow immediately after the Static port row at 29px spacing
+        // The notify, wait-for-VPN and show-update rows follow the Static port row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
         chkNotifyOnPortUpdate.Location  = new Point(15, 169);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";

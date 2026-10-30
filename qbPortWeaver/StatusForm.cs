@@ -75,7 +75,6 @@ public partial class StatusForm : Form
         colHistoryEvent.Width = EventColumnMinWidth;
     }
 
-
     // The Statistics group's Clear menu also has to be attached to each child label:
     // ContextMenuStrip does not propagate from a container to its children, and the group's
     // face is almost entirely labels. Kept out of the designer file so a designer round-trip

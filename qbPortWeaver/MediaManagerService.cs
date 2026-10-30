@@ -418,7 +418,7 @@ public static class MediaManagerService
     // become empty only because the import moved their last file out this cycle are in the snapshot and
     // will be caught. Folders created or emptied by external processes after the snapshot are not seen
     // until the next cycle. The root folder itself is never deleted.
-    internal static void CleanupEmptyFolders(string rootFolder, bool dryRun, FolderKeepSet keep)
+    private static void CleanupEmptyFolders(string rootFolder, bool dryRun, FolderKeepSet keep)
     {
         if (!MediaImporter.DirectoryExistsWithSmbRetry(rootFolder)) return;
 

@@ -112,7 +112,7 @@ internal sealed class TimeRangeForm : Form
         // leaves, which at some font sizes was narrower than the text. Measured here for the same reason as
         // the caption, after the scaling.
         foreach (var field in new[] { _from, _to })
-            field.MinimumSize = new Size(TextRenderer.MeasureText(field.Text, field.Font).Width + FieldTextPadding, 0);
+            field.MinimumSize = new Size(TextRenderer.MeasureText(field.Text, field.Font).Width + LogicalToDeviceUnits(FieldTextPadding), 0);
         CenterToParent();   // re-centre: the widths above are applied after the initial placement
     }
 

@@ -1105,10 +1105,11 @@ public partial class MediaManagerForm : Form
         string name = FileNameParser.SanitizeFileName(Path.GetFileName(raw));
         // An import never changes the container, so the extension always comes from the source file:
         // a name typed without one would otherwise import as a file nothing opens, and a dotted title
-        // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down.
+        // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down. A name typed
+        // with another video extension has it replaced, not kept beside the source's (".mp4.mkv").
         string sourceExtension = row.Tag is RowData rd ? Path.GetExtension(rd.Proposal.OriginalPath) : string.Empty;
         if (sourceExtension.Length > 0 && !name.EndsWith(sourceExtension, StringComparison.OrdinalIgnoreCase))
-            name += sourceExtension;
+            name = FileNameParser.IsVideoFile(name) ? Path.ChangeExtension(name, sourceExtension) : name + sourceExtension;
         return name;
     }
 

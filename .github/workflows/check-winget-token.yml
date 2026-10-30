@@ -38,9 +38,11 @@ jobs:
             throw "WINGET_TOKEN secret is not configured."
           }
 
-          $response = Invoke-WebRequest `
-            -Uri 'https://api.github.com/user' `
-            -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' }
+          $request = @{
+            Uri     = 'https://api.github.com/user'
+            Headers = @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' }
+          }
+          $response = Invoke-WebRequest @request
 
           $login = ($response.Content | ConvertFrom-Json).login
           Write-Host "Token authenticates as: $login"
@@ -77,12 +79,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $fork = "$($env:GITHUB_REPOSITORY_OWNER)/winget-pkgs"
           try {
-            $result = Invoke-RestMethod `
-              -Uri "https://api.github.com/repos/$fork/merge-upstream" `
-              -Method Post `
-              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' } `
-              -Body (@{ branch = 'master' } | ConvertTo-Json) `
-              -ContentType 'application/json'
+            $request = @{
+              Uri         = "https://api.github.com/repos/$fork/merge-upstream"
+              Method      = 'Post'
+              Headers     = @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' }
+              Body        = (@{ branch = 'master' } | ConvertTo-Json)
+              ContentType = 'application/json'
+            }
+            $result = Invoke-RestMethod @request
             Write-Host "Fork $fork synced: $($result.merge_type) - $($result.message)"
             Write-Host "WINGET_TOKEN is good for the next publish."
           } catch {

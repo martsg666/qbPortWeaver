@@ -214,7 +214,8 @@ public sealed class PortSyncService
     // Port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
     // idle-firewalled state, which can last indefinitely on a client with no active transfers)
-    // causes at most one recovery action - re-armed only after a verification reports the port open.
+    // causes at most one recovery action - re-armed after a verification reports the port open, or when
+    // the VPN provider or adapter changes (TrackRecoveryContext).
     private int _confirmedClosedCount;
     private bool _portClosedRecoveryArmed = true;
 
@@ -407,7 +408,8 @@ public sealed class PortSyncService
         public const string PortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
         public const string PortClosedRecoveryChecks = "portClosedRecoveryChecks";
         public const string PortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
-        // False once the one-shot trigger has fired, until a verification reports the port open again.
+        // False once the one-shot trigger has fired, until a verification reports the port open again
+        // or the VPN provider or adapter changes.
         public const string PortClosedRecoveryArmed = "portClosedRecoveryArmed";
         // When the trigger's count has reached its threshold but a time hold keeps it back (the port has
         // not stayed closed long enough, or an exit-address reconnect is still settling): the instant
@@ -2164,8 +2166,8 @@ public sealed class PortSyncService
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
     // dispatches the provider's recovery action once. Independent of the failed-sync recovery
     // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
-    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
-    // so a persistently false "closed" can never cause a recovery loop.
+    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult) or
+    // the VPN provider or adapter changes (TrackRecoveryContext), so a persistently false "closed" can never cause a recovery loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)

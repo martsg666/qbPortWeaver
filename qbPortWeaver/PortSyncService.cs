@@ -2509,8 +2509,8 @@ public sealed class PortSyncService
             // this very comment calls a normal reconnect. The status only decorates the line below, and
             // the "no status" fallback already treats an unreadable one as expected.
             string? connectionStatus = await client.TryGetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
-            // This line used to promise the rebind outright, and there are TWO independent ways that
-            // promise is false - both were live, and the second was missed when the first was fixed.
+            // This line used to promise the rebind outright, and there is more than one independent way that
+            // promise is false - the first two were both live, and the second was missed when the first was fixed.
             //
             // 1. The arm set just above is spent by a port write later in THIS SAME cycle (see
             //    UpdatePortAndNotifyAsync, which clears it because the write rebuilds the listen sockets

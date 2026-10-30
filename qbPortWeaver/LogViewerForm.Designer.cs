@@ -120,7 +120,7 @@ partial class LogViewerForm
         toolTip.SetToolTip(chkDebug, "Show or hide DEBUG entries");
 
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
-        // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
+        // Positioned immediately after chkDebug; y/h match the filter buttons; OnLoad sizes and centres both groups to the search box together.
         btnIssuePrev.Anchor    = leftAnchor;
         btnIssuePrev.FlatStyle = FlatStyle.Flat;
         btnIssuePrev.Location  = new Point(296, 4);

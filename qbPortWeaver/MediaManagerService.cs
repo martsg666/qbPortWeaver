@@ -888,13 +888,7 @@ public static class MediaManagerService
 
         foreach (var file in files.Where(FileNameParser.IsSubtitleFile))
         {
-            var fileName = Path.GetFileName(file);
-            if (!fileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
-            // Require the character immediately after the base name to be '.' or end of string
-            // so "Movie.mkv" does not claim "Movie 2.srt" as a companion.
-            if (fileName.Length > videoBase.Length && fileName[videoBase.Length] != '.') continue;
-
-            var suffix = fileName[videoBase.Length..];
+            if (FileNameParser.SubtitleSuffixFor(Path.GetFileName(file), videoBase) is not { } suffix) continue;
             var targetPath = Path.Combine(targetDir, targetBase + suffix);
             ImportFile(file, targetPath, dryRun, importMode);
         }

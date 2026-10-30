@@ -139,6 +139,19 @@ public static partial class FileNameParser
     public static bool IsSubtitleFile(string path) =>
         _subtitleExtensions.Contains(Path.GetExtension(path));
 
+    /// <summary>
+    /// The part of a subtitle's file name after <paramref name="videoBase"/> (its language tag and
+    /// extension, such as ".en.srt"), or <see langword="null"/> when the subtitle does not belong to
+    /// that video. The character after the base name must be '.' or the end of the name, so
+    /// "Movie.mkv" does not claim "Movie 2.srt" as a companion.
+    /// </summary>
+    public static string? SubtitleSuffixFor(string subtitleFileName, string videoBase)
+    {
+        if (!subtitleFileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) return null;
+        if (subtitleFileName.Length > videoBase.Length && subtitleFileName[videoBase.Length] != '.') return null;
+        return subtitleFileName[videoBase.Length..];
+    }
+
     /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx or NxNN).</summary>
     public static bool IsTvShowEpisode(string name) =>
         TvShowEpisodeRegex().IsMatch(name) || TvShowEpisodeLegacyRegex().IsMatch(name);

@@ -364,13 +364,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
 
             foreach (var subtitle in subtitles)
             {
-                var subName = Path.GetFileName(subtitle);
-                if (!subName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
-                // Require the character immediately after the base name to be '.' or end of string
-                // so "Movie.mkv" does not claim "Movie 2.srt" as a companion.
-                if (subName.Length > videoBase.Length && subName[videoBase.Length] != '.') continue;
-
-                var suffix = subName[videoBase.Length..];
+                if (FileNameParser.SubtitleSuffixFor(Path.GetFileName(subtitle), videoBase) is not { } suffix) continue;
                 var targetPath = Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, suffix));
                 MediaManagerService.ImportFile(subtitle, targetPath, dryRun, importMode);
             }

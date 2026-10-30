@@ -196,20 +196,12 @@ public static class DiagnosticsService
         // at the adapter: otherwise a down adapter would be reported first, with a hint about the
         // VPN's port forwarding, and the missing setting would never be named. Same order and wording
         // as PortSyncService.CreateStaticPortVpnManager, so Diagnostics names what the tray names.
-        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
+        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) &&
+            MissingStaticPortSetting() is { } missing)
         {
-            bool noAdapter = string.IsNullOrWhiteSpace(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName));
-            bool noPort = !AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort));
-            if (noAdapter || noPort)
-            {
-                results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
-                results.Add(noAdapter
-                    ? new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No VPN adapter configured",
-                        "Select the VPN adapter in Settings → General.")
-                    : new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No forwarded port configured",
-                        "Enter the port your VPN provider assigned in Settings → General."));
-                return (null, null);
-            }
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, missing.Message, missing.Hint));
+            return (null, null);
         }
 
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
@@ -268,6 +260,17 @@ public static class DiagnosticsService
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
                 gatewayHint ?? "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
+    }
+
+    // The Static port setting the sync loop refuses to run without, in its order (adapter, then port),
+    // with the hint for it; null when both are set.
+    private static (string Message, string Hint)? MissingStaticPortSetting()
+    {
+        if (string.IsNullOrWhiteSpace(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName)))
+            return ("No VPN adapter configured", "Select the VPN adapter in Settings → General.");
+        if (!AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort)))
+            return ("No forwarded port configured", "Enter the port your VPN provider assigned in Settings → General.");
+        return null;
     }
 
     // Whether traffic leaves from the address the port is forwarded on - the same comparison the sync

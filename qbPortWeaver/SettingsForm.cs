@@ -439,7 +439,8 @@ public partial class SettingsForm : Form
             cboVpnAdapter.Enabled &&
             cboVpnAdapter.SelectedItem?.ToString() == SelectAdapterPlaceholder)
         {
-            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, would apply the port while the VPN is down.");
+            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, " +
+                "would apply the port while the VPN is down.\n\nIf it is not listed, connect the VPN so its adapter is up, then click ⟳.");
             return false;
         }
 

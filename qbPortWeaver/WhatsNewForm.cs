@@ -28,7 +28,8 @@ public partial class WhatsNewForm : Form
         "Works with VPN providers that give you a permanent port\n" +
         "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
         "the port. The network interface checks, the open-port check, auto-recovery and the default " +
-        "port all work as they do with the other providers.\n\n" +
+        "port all work as they do with the other providers. The NAT-PMP adapter setting is now called " +
+        "VPN adapter, since both providers use it; your choice is kept.\n\n" +
         "Changed: clearer status when something needs fixing\n" +
         "A missing setting, or a default port that could not be applied, now shows the tray red with " +
         "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +

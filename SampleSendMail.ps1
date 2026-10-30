@@ -17,10 +17,17 @@ function FailedCycleState($s) {
     # machine is offline - it keeps retrying on a backoff. The cap comes next, ahead of the sustained
     # hold: that hold defers the next attempt, the cap means none is coming until a port reads
     # successfully. A missing key is an older app version, where the cap did not exist, so absent is
-    # correctly falsy here. Both holds are absolute instants, not remaining durations.
-    if ($null -ne $s.recoveryHoldUntil) { return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)" }
+    # correctly falsy here. Both holds are absolute instants, not remaining durations, and one that has
+    # already passed is reported as the Status panel reports it: due on the next failed cycle.
+    if ($null -ne $s.recoveryHoldUntil) {
+        if ([DateTimeOffset]$s.recoveryHoldUntil -le [DateTimeOffset]::Now) { return 'Will trigger on the next failed cycle' }
+        return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)"
+    }
     if ($s.recoverySuspended) { return 'Suspended - restarts did not help, resumes when a port is found' }
-    if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
+    if ($null -ne $s.recoverySustainedUntil) {
+        if ([DateTimeOffset]$s.recoverySustainedUntil -le [DateTimeOffset]::Now) { return 'Will trigger on the next failed cycle' }
+        return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)"
+    }
     if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }
     if ($s.recoveryFailedCycles -gt 0) { return "$($s.recoveryFailedCycles) of $($s.recoveryTriggerCycles) failed cycles" }
     return $null

@@ -9,6 +9,13 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.1\n\n" +
+        "PLACEHOLDER - replace before release\n" +
+        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
+        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
+        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
+        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Previously released\n\n" +
         "New in 2.7.0\n\n" +
         "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +
         "Testing for this release found that ProtonVPN's OpenVPN connections can forward your port on one " +
@@ -124,7 +131,6 @@ public partial class WhatsNewForm : Form
         "Diagnostics now warns when the helper service is from a different version than the app. The " +
         "Nicotine+ plugin moves to a free port only when its port is taken, and otherwise says to check " +
         "its Address setting. Closing qbPortWeaver during a sync no longer writes errors to the log.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +

@@ -1143,6 +1143,9 @@ public sealed class PortSyncService
             // The closed-port sequence starts afresh too: a confirmation, count or time floor from the old
             // setup would let the new one's first closed check (its client still rebinding) trigger recovery.
             RestartClosedPortSequence();
+            // And the port-closed trigger is armed again: a recovery that ran for the old setup's outage says
+            // nothing about the new one, which would otherwise be told recovery "has already run".
+            _portClosedRecoveryArmed = true;
             // So does an exit-address episode: its reconnects, give-up and announcement were for the old
             // setup, and two setups can report the same provider name (a NAT-PMP adapter and Static port on
             // it), so the provider check in EndVpnExitHoldWithoutForward cannot tell them apart.

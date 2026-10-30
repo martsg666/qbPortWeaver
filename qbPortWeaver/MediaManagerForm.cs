@@ -27,8 +27,8 @@ public partial class MediaManagerForm : Form
     // not reported as the import being cancelled.
     private bool _importApplied;
     // Controls disabled while an async operation is running. After the operation, SetBusy(false)
-    // re-enables _busyControls and each handler's finally calls UpdateScanStatus() which sets
-    // btnImportNow.Enabled appropriately based on the current grid state.
+    // re-enables _busyControls, and each handler then sets btnImportNow.Enabled for the grid it leaves,
+    // through UpdateScanStatus() or, for Clear Cache, which empties the grid, directly.
     private Control[] _busyControls;
 
     // Row confidence colors - resolved once in OnLoad for the active theme

@@ -548,7 +548,7 @@ When the two differ, a state-change Warn, latched on its full text so that a rec
 
 ### Port Update Notification
 
-When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
+When `NotifyOnPortUpdate` is enabled (General settings, default on), a port change raises the `PortUpdated` event once `ApplyPortUpdateAsync` returns, also when the client restart after the write failed. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
 
 ### Log Alert Notifications
 

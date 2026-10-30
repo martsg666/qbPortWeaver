@@ -16,7 +16,7 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
 {
     /// <inheritdoc />
     // The adapter name, as for NAT-PMP: log lines and the interface-mismatch warning read
-    // "'<adapter>' is connected" and "is not a <adapter> adapter".
+    // "<adapter> is connected" and "is not a <adapter> adapter".
     public string ProviderName => adapterName;
 
     /// <inheritdoc />

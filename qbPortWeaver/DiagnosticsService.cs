@@ -268,11 +268,11 @@ public static class DiagnosticsService
                         "Select the VPN adapter in Settings → General."),
                     new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable")];
         if (!VpnAdapter.IsUp(adapter, "DiagnosticsService.NatPmpUnavailableResults"))
-            return [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"'{adapter}' is not connected",
+            return [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{adapter} is not connected",
                         $"Connect the VPN that owns the '{adapter}' adapter, or select the right adapter in Settings → General."),
                     new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected")];
-        return [new(Checks.VpnConnection, DiagnosticStatus.Pass, $"'{adapter}' is connected"),
-                new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"'{adapter}' gateway did not answer NAT-PMP",
+        return [new(Checks.VpnConnection, DiagnosticStatus.Pass, $"{adapter} is connected"),
+                new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"{adapter} gateway did not answer NAT-PMP",
                     GenericGatewayNoPortHint(RegistrySettingsManager.VpnProviderNatPmp, adapter) ?? "Ensure port forwarding is enabled on a P2P server.")];
     }
 

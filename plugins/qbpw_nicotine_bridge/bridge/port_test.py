@@ -104,7 +104,9 @@ class PortTest:
         """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
         wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
 
-        if self._core_io.connection_state() == "disconnected":
+        # Read on the main thread like every other core read from a handler thread; the default
+        # timeout is the proxy's read timeout.
+        if self._proxy.call(self._core_io.connection_state) == "disconnected":
             return {"ok": True, "state": STATE_OFFLINE, "port": port,
                     "result": None, "age_ms": 0, "source": None}
 

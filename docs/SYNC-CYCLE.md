@@ -809,9 +809,12 @@ RunAsync
          │   ├─ open:
          │   │   ├─ ClearVpnExitMismatch (keeps spent reconnects)
          │   │   ├─ ResetSpentExitReconnectsIfMatchedAsync (after exit reconnects or a give-up, once settled)
+         │   │   │   ├─ ForwardAddressOfAsync (GetForwardAddressAsync, as in CheckVpnExitAddressAsync below)
+         │   │   │   └─ VpnExitAddress.QueryAsync
          │   │   └─ HandlePortOpenResult (re-arms port-closed recovery)
          │   └─ closed:
          │       ├─ CheckVpnExitAddressAsync (confirming check, or a mismatch held)
+         │       │   ├─ ForwardAddressOfAsync (GetForwardAddressAsync; ProtonVPN: NAT-PMP query to its tunnel gateway, log address as fallback)
          │       │   ├─ VpnExitAddress.QueryAsync (STUN through the VPN adapter)
          │       │   ├─ mismatch: StartNewExitEpisodeIfForwardChanged, then the Warn and balloon on entry
          │       │   ├─ no forward address: EndVpnExitHoldWithoutForward (then EndVpnExitHold, or RestartClosedPortSequence on a provider switch)

@@ -17,7 +17,9 @@ public interface IVpnManager
     /// <summary>
     /// Returns <see langword="true"/> if the provider or gateway is currently reachable and active.
     /// For ProtonVPN this means the tunnel adapter is up; for PIA it means piactl reports the connection
-    /// state as Connected. For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
+    /// state as Connected. For NAT-PMP this means the configured network adapter is up; the gateway answered
+    /// when the manager was created, except for the instance reused when it does not answer and the stand-in
+    /// used before any gateway has.
     /// For Static port it means the configured network adapter is up.
     /// </summary>
     bool IsVpnConnected();
@@ -62,8 +64,10 @@ public interface IVpnManager
     /// <para>NAT-PMP takes it from the gateway's external-address reply, ProtonVPN from the server
     /// address its client logs on each connection. PIA and Static port report none, so the check
     /// does not run for them. ProtonVPN's can also be <see langword="null"/> for a while, once both its
-    /// current and rotated logs have lost the connection line; the sync loop treats that as a failed
-    /// lookup, not as a provider that reports none. Valid once the provider has been created for this
+    /// current and rotated logs have lost the connection line, and NAT-PMP's when the gateway reports
+    /// 0.0.0.0, on the instance reused when the gateway does not answer, and on the stand-in for an adapter
+    /// with no gateway yet; the sync loop treats all of these as a failed lookup, not as a provider that
+    /// reports none. Valid once the provider has been created for this
     /// cycle: NAT-PMP sets it at creation, ProtonVPN reads it from the log on first access.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;

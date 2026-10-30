@@ -71,7 +71,7 @@ public sealed record StatusSnapshot
     /// <summary>Consecutive confirmed-closed checks required before port-closed recovery triggers.</summary>
     [JsonPropertyName("portClosedRecoveryTriggerChecks")] public int PortClosedRecoveryTriggerChecks { get; init; }
     /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
-    /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
+    /// port open again or the VPN provider or adapter changes. While false that trigger cannot fire however long the port stays closed.</summary>
     [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
     /// <summary>When the port-closed trigger's hold ends, while its count has reached the threshold but
     /// a time hold keeps it back (the port has not stayed closed long enough, or an exit-address

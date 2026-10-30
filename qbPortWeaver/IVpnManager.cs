@@ -65,7 +65,8 @@ public interface IVpnManager
     /// and Static port report none, so the check does not run for them. NAT-PMP's is
     /// <see langword="null"/> when the gateway reports 0.0.0.0, on the instance reused when the gateway
     /// does not answer, and on the stand-in for an adapter with no gateway yet. Callers read it through
-    /// <see cref="GetForwardAddressAsync"/>, which a provider that has to ask for it (ProtonVPN) overrides.</para>
+    /// <see cref="GetForwardAddressAsync"/>, which a provider that has to ask for it (ProtonVPN) overrides;
+    /// ProtonVPN reports none here.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;
 
@@ -85,7 +86,7 @@ public interface IVpnManager
     /// <summary>
     /// The VPN adapter's current IPv4 address, which the exit-address lookup is sent from so that it
     /// leaves through the tunnel; <see langword="null"/> when the adapter is not up or has none, and for
-    /// providers without a <see cref="ForwardAddress"/>. Read live on each call, because the VPN hands
+    /// providers that report no forward address (see <see cref="GetForwardAddressAsync"/>). Read live on each call, because the VPN hands
     /// the adapter a new address on every reconnect.
     /// </summary>
     System.Net.IPAddress? TunnelAddress => null;

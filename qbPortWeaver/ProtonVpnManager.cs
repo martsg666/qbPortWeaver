@@ -39,8 +39,9 @@ public sealed partial class ProtonVpnManager : IVpnManager
     // port test, on an open one while exit reconnects are spent, and in Diagnostics), whereas the port is
     // read every cycle. The server lines are written once per
     // connection, so on a long session they sit far back in the file or in the rotated one, and once both
-    // files have lost them they stay null: the address is then asked from the gateway (see
-    // GetForwardAddressAsync), and the server name is left out of the messages.
+    // files have lost them they stay null. The forward address is asked from the gateway first anyway
+    // (see GetForwardAddressAsync), so the address line is only its fallback; the name line is the one
+    // source of the server name in messages, which is left out when it is gone.
     private bool _serverScanned;
     private System.Net.IPAddress? _serverAddress;
     private string? _serverName;
@@ -202,8 +203,8 @@ public sealed partial class ProtonVpnManager : IVpnManager
     }
 
     // Returns the most recent matched port. Falls back to the rotated log when the current one has no port
-    // line yet: ProtonVPN writes one every minute, but a file it has just rotated to can be up to a minute
-    // without one, and a cycle landing there would otherwise report port detection as failed.
+    // line yet: ProtonVPN writes one about every 10 seconds, but a file it has just rotated to has none
+    // for a moment, and a cycle landing there would otherwise report port detection as failed.
     private int? ReadLastPortFromLog()
     {
         int? port = null;
@@ -226,11 +227,12 @@ public sealed partial class ProtonVpnManager : IVpnManager
             Path.GetFileNameWithoutExtension(_logFilePath) + ".1" + Path.GetExtension(_logFilePath));
 
     // Finds the newest server address and server name lines, once per instance. Any failure leaves
-    // them null, which only means the exit-address check does not run this cycle.
+    // them null: the forward address then comes from the gateway alone, and messages leave out the
+    // server name.
     // Falls back to the rotated log (client-logs.1.txt) for whichever line the current one lacks:
     // ProtonVPN writes both only when it connects, and rotates its log about every 400 KB, so for much
     // of a long session they are only in the rotated file. The port line needs no such fallback - it is
-    // written every minute.
+    // written about every 10 seconds.
     private void EnsureServerScanned()
     {
         if (_serverScanned) return;

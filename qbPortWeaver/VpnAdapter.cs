@@ -5,10 +5,9 @@ using System.Net.Sockets;
 namespace qbPortWeaver;
 
 /// <summary>
-/// Adapter rules shared by the VPN managers that work through a network adapter chosen in Settings
-/// (<see cref="NatPmpManager"/> and <see cref="StaticPortManager"/>): which adapters are candidates,
-/// whether the chosen one is up, and what auto-recovery does to it. Kept in one place so the two
-/// providers cannot drift apart on any of them.
+/// Adapter rules shared by the VPN managers that work through a network adapter: which adapters are
+/// candidates, whether one is up and what its address is, and what auto-recovery does to an adapter
+/// chosen in Settings. Kept in one place so the providers cannot drift apart on any of them.
 /// </summary>
 internal static class VpnAdapter
 {

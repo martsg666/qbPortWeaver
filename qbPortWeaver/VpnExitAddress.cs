@@ -10,7 +10,7 @@ namespace qbPortWeaver;
 /// (RFC 5389) which address a request sent from the VPN adapter arrived from. Peers learn a client's
 /// address from what other hosts observe - the Soulseek server, other peers - so this is the address
 /// they are given. When it differs from the address the port is forwarded on (the NAT-PMP gateway's
-/// external address, or the ProtonVPN server address in its client log), no peer can ever reach the
+/// external address, which ProtonVPN's tunnel gateway reports too), no peer can ever reach the
 /// forward, whatever the client does.
 /// </summary>
 internal static class VpnExitAddress

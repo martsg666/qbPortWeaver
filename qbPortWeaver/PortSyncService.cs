@@ -404,7 +404,8 @@ public sealed class PortSyncService
         // Published for the same reason the failed-cycle counters are - without them the Status panel
         // can only describe one of the two triggers, so a user whose port is closed sees a row that
         // says nothing about the recovery actually approaching (or, once Armed goes false, about the
-        // recovery that has already run and will not run again until the port reopens).
+        // recovery that has already run and will not run again until the port reopens or the VPN
+        // provider or adapter changes).
         public const string PortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
         public const string PortClosedRecoveryChecks = "portClosedRecoveryChecks";
         public const string PortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
@@ -1656,9 +1657,10 @@ public sealed class PortSyncService
         if (vpnManager is not null && string.Equals(vpnManager.ProviderName, _vpnExitProvider, StringComparison.OrdinalIgnoreCase))
         {
             // After a give-up the hold stays: a forward address the provider has merely stopped reporting
-            // (ProtonVPN once its log has rotated the line away) means no new connection since the mismatch
-            // was seen, so that evidence still stands, and ending the hold would let the generic trigger
-            // restart the VPN an hour after the user was told to change server.
+            // (ProtonVPN when its gateway does not answer and its log has rotated the line away) means no
+            // new connection since the mismatch was seen, so that evidence still stands, and ending the
+            // hold would let the generic trigger restart the VPN an hour after the user was told to
+            // change server.
             if (_vpnExitMismatch && _vpnExitGiveUpNotified)
             {
                 LogManager.Instance.LogDebug("PortSyncService.EndVpnExitHoldWithoutForward: forward address not reported after the give-up - the hold stays");

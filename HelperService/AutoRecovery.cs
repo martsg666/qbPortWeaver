@@ -140,8 +140,7 @@ internal static partial class AutoRecovery
         }
     }
 
-    // Log levels around the kill escalation, so the four "timed out - force-killing" lines do not drift
-    // back to Warn: an *announcement* that we are escalating to a force-kill is Info, because escalating
+    // Log levels around the kill escalation, so the force-kill announcements do not drift back to Warn: an *announcement* that we are escalating to a force-kill is Info, because escalating
     // is the designed fallback and its outcome is logged separately. Only the *outcome* carries severity -
     // Info when a stage succeeds ("force-killed via ..."), Warn when one fails ("Failed to ...", "could
     // not be killed", "still running"). The distinction matters beyond tidiness: the helper's Warn count

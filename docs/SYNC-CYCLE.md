@@ -69,7 +69,7 @@ flowchart TD
     ERROR_UPDATE --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
-    FINALLY([Write status JSON]) --> POST_CMD{Successful port change?}
+    FINALLY([Write status JSON]) --> POST_CMD{Port written this cycle?}
     POST_CMD -- Yes --> RUN_CMD[Run post-update command fire-and-forget]
     POST_CMD -- No --> END([Raise SyncCompleted event - cycle done])
     RUN_CMD --> END
@@ -705,7 +705,7 @@ Two nearby warnings deliberately stay per-cycle, because each cycle is a fresh o
 
 Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted history of port-affecting events in `qbPortWeaver.history.json` (same folder), capped at the 50 most recent entries. Three points record into it:
 
-- **Successful port change** (`UpdatePortAndNotifyAsync`) - with the cause (VPN-assigned, default-port fallback, or the configured Static port) and the previous port. When the change follows a recovery dispatch or a network-change-triggered cycle, the entry carries an "after recovery" / "after network change" suffix: MainForm marks a network-change cycle via a `RunAsync` parameter, and a dispatched recovery bumps a recovery counter that the next successful cycle consumes - only up to the value it read at its start, so a recovery dispatched during that cycle stays pending for the one after (recovery wins when both apply - it is the root cause)
+- **Port change** (`UpdatePortAndNotifyAsync`), also when the client restart after the write failed - with the cause (VPN-assigned, default-port fallback, or the configured Static port) and the previous port. When the change follows a recovery dispatch or a network-change-triggered cycle, the entry carries an "after recovery" / "after network change" suffix: MainForm marks a network-change cycle via a `RunAsync` parameter, and a dispatched recovery bumps a recovery counter that the next successful cycle consumes - only up to the value it read at its start, so a recovery dispatched during that cycle stays pending for the one after (recovery wins when both apply - it is the root cause)
 - **Confirmed-closed transition** (`HandlePortClosedResult`) - one entry per persistent condition, not one per re-confirming cycle, mirroring the balloon
 - **Auto-recovery dispatch** (`DispatchRecoveryAsync`, the failed-sync and port-closed triggers, the exit-address reconnects, plus the manual recovery test) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
 

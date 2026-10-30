@@ -274,8 +274,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     {
         if (partSuffix is null) return BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
 
-        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(filePath)));
+        return BuildFolderLayoutPath(libraryPath, info, partSuffix, Path.GetExtension(filePath));
     }
 
     // Builds the library target path for a standalone movie file.
@@ -297,8 +296,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         if (!TrySplitPartSuffix(Path.GetFileNameWithoutExtension(editedName), out _, out var partSuffix))
             return BuildStandaloneMoviePath(editedName, info, libraryPath, createFolders);
 
-        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(editedName)));
+        return BuildFolderLayoutPath(libraryPath, info, partSuffix, Path.GetExtension(editedName));
     }
 
     // Splits a name in the multi-part form BuildFolderMovieFileName produces ("Title (Year) - cd1") into
@@ -322,12 +320,15 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).
     // Always places files in a subfolder regardless of createFolders: multi-part files must be grouped
     // together under one folder to avoid name collisions in a flat library root.
-    private string BuildFolderMoviePath(string filePath, MovieInfo info)
+    private string BuildFolderMoviePath(string filePath, MovieInfo info) =>
+        BuildFolderLayoutPath(libraryPath, info, ExtractPartSuffix(Path.GetFileName(filePath)), Path.GetExtension(filePath));
+
+    // The folder layout every multi-part or folder movie path shares: "Title (Year)\" holding the file
+    // BuildFolderMovieFileName names.
+    private static string BuildFolderLayoutPath(string libraryPath, MovieInfo info, string? partSuffix, string extension)
     {
-        var ext = Path.GetExtension(filePath);
         var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        var partSuffix = ExtractPartSuffix(Path.GetFileName(filePath));
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, ext));
+        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, extension));
     }
 
     // Shared naming convention for folder-movie files and their companion subtitles.

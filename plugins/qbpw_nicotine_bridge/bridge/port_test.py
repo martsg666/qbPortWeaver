@@ -101,15 +101,24 @@ class PortTest:
 
     # ---------------------------------------------------------- handler threads
 
-    def request(self, port, wait_seconds):
-        """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
-        wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
+    def request(self, port, wait_seconds, started=None):
+        """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict.
+
+        ``wait_seconds`` is counted from ``started`` (a ``time.monotonic()`` reading; now when
+        omitted), so the main-thread reads made before the wait come out of it rather than add to
+        it: the caller's HTTP timeout is sized to the wait it asked for.
+        """
+        if started is None:
+            started = time.monotonic()
 
         # Read on the main thread like every other core read from a handler thread; the default
         # timeout is the proxy's read timeout.
         if self._proxy.call(self._core_io.connection_state) == "disconnected":
             return {"ok": True, "state": STATE_OFFLINE, "port": port,
                     "result": None, "age_ms": 0, "source": None}
+
+        wait_seconds = min(float(wait_seconds), MAX_WAIT_SECONDS) - (time.monotonic() - started)
+        wait_seconds = max(0.0, wait_seconds)
 
         # Prefer Nicotine+'s native checker when this version exposes it; otherwise query the Soulseek
         # port-test service directly, so reachability still works on releases without the native API.

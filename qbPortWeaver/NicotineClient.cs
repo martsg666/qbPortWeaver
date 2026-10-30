@@ -32,7 +32,8 @@ public sealed class NicotineClient : ManagedClientBase
     private const string StateDone = "done";
 
     // Long enough for the plugin's own capped wait plus a round trip, short enough that the
-    // shared 10 s HttpClient timeout still bounds the request.
+    // shared 10 s HttpClient timeout still bounds the request. The plugin counts its main-thread
+    // reads before the wait against this, so they do not add to it.
     private const int PortTestWaitMs = 8000;
 
     // Nicotine+ reports "connecting" while the bridge's own reconnect is in flight. Treated as

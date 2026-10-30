@@ -9,6 +9,7 @@ import hmac
 import json
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from bridge import errors
@@ -354,13 +355,14 @@ class Bridge:
         return self.proxy.call(self.core_io.reconnect, timeout=MainThreadProxy.WRITE_TIMEOUT)
 
     def run_port_test(self, body):
+        started = time.monotonic()   # the effective-port read below comes out of the wait, not on top of it
         port = _optional_port(body)
         if port is None:
             port = self.proxy.call(self._effective_port, timeout=MainThreadProxy.READ_TIMEOUT)
         wait_ms = body.get("wait_ms", 8000)
         if not isinstance(wait_ms, int) or isinstance(wait_ms, bool) or wait_ms < 0:
             raise errors.bad_request("'wait_ms' must be a non-negative integer.")
-        return self.port_test.request(port, wait_ms / 1000.0)
+        return self.port_test.request(port, wait_ms / 1000.0, started=started)
 
     def peek_port_test(self):
         return self.port_test.peek()

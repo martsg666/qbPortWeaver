@@ -61,16 +61,26 @@ public interface IVpnManager
     /// <see langword="null"/>. Compared with the address traffic actually leaves from (see
     /// <see cref="VpnExitAddress"/>): when they differ, peers are given the exit address and cannot
     /// reach the forward.
-    /// <para>NAT-PMP takes it from the gateway's external-address reply, ProtonVPN from the server
-    /// address its client logs on each connection. PIA and Static port report none, so the check
-    /// does not run for them. ProtonVPN's can also be <see langword="null"/> for a while, once both its
-    /// current and rotated logs have lost the connection line, and NAT-PMP's when the gateway reports
-    /// 0.0.0.0, on the instance reused when the gateway does not answer, and on the stand-in for an adapter
-    /// with no gateway yet; the sync loop treats all of these as a failed lookup, not as a provider that
-    /// reports none. Valid once the provider has been created for this
-    /// cycle: NAT-PMP sets it at creation, ProtonVPN reads it from the log on first access.</para>
+    /// <para>NAT-PMP takes it from the gateway's external-address reply when the manager is created. PIA
+    /// and Static port report none, so the check does not run for them. NAT-PMP's is
+    /// <see langword="null"/> when the gateway reports 0.0.0.0, on the instance reused when the gateway
+    /// does not answer, and on the stand-in for an adapter with no gateway yet. Callers read it through
+    /// <see cref="GetForwardAddressAsync"/>, which a provider that has to ask for it (ProtonVPN) overrides.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;
+
+    /// <summary>
+    /// The forward address (see <see cref="ForwardAddress"/>) for the exit-address check; the one member the
+    /// sync loop and Diagnostics read it through. Defaults to <see cref="ForwardAddress"/>.
+    /// <para>ProtonVPN asks its tunnel gateway over NAT-PMP, the way NAT-PMP mode does, and falls back to the
+    /// server address its client logs on each connection; once per instance, so once per cycle. Its log line
+    /// is written once per connection and rotates out within hours, so the gateway is the source that lasts.
+    /// <see langword="null"/> from a provider that reports a forward address (gateway silent and log lines
+    /// gone, or any NAT-PMP case above) is treated by the sync loop as a failed lookup, not as a provider
+    /// that reports none.</para>
+    /// </summary>
+    Task<System.Net.IPAddress?> GetForwardAddressAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(ForwardAddress);
 
     /// <summary>
     /// The VPN adapter's current IPv4 address, which the exit-address lookup is sent from so that it

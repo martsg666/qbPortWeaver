@@ -1463,7 +1463,7 @@ public sealed class PortSyncService
         // one of the provider's own intermediate connections ends the hold (and disarms the trigger), and the
         // final connection still has to be looked at, which nothing else would force until a port change or
         // the throttle. Bounded in time as well as by the episode or the give-up: a lookup that never
-        // completes (a log that rotated the connection line away, a STUN that keeps failing) would otherwise
+        // completes (a silent ProtonVPN gateway with its log line rotated away, a STUN that keeps failing) would otherwise
         // keep the episode open, and the check every cycle, indefinitely.
         bool exitEpisodeOpen = _vpnExitAnnounced && _vpnExitReconnects > 0 && !_vpnExitGiveUpNotified
             && portClosedRecoveryEnabled
@@ -1563,7 +1563,7 @@ public sealed class PortSyncService
     {
         if (_vpnExitReconnects == 0 && !_vpnExitGiveUpNotified) return;
         if (ExitEpisodeSettling) return;
-        System.Net.IPAddress? forward = vpnManager?.ForwardAddress;
+        System.Net.IPAddress? forward = await ForwardAddressOfAsync(vpnManager, cancellationToken).ConfigureAwait(false);
         System.Net.IPAddress? local = vpnManager?.TunnelAddress;
         if (forward is null || local is null) return;
         System.Net.IPAddress? exit = await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
@@ -1575,6 +1575,10 @@ public sealed class PortSyncService
         _vpnExitGiveUpNotified = false;
         _vpnExitGiveUpForward = null;
     }
+
+    // The forward address for the exit-address check, or null with no manager.
+    private static Task<System.Net.IPAddress?> ForwardAddressOfAsync(IVpnManager? vpnManager, CancellationToken cancellationToken) =>
+        vpnManager?.GetForwardAddressAsync(cancellationToken) ?? Task.FromResult<System.Net.IPAddress?>(null);
 
     // Raises the PortVerificationFailed balloon event. A throwing handler must not break the cycle.
     private void RaisePortVerificationFailed(string message)
@@ -1592,7 +1596,7 @@ public sealed class PortSyncService
     // nothing is held and nothing is logged.
     private async Task CheckVpnExitAddressAsync(IVpnManager? vpnManager, int port, bool fromClosedResult, CancellationToken cancellationToken)
     {
-        System.Net.IPAddress? forward = vpnManager?.ForwardAddress;
+        System.Net.IPAddress? forward = await ForwardAddressOfAsync(vpnManager, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null || forward is null)
         {
             EndVpnExitHoldWithoutForward(vpnManager);
@@ -1640,8 +1644,8 @@ public sealed class PortSyncService
         EndVpnExitHold(exit, fromClosedResult);
     }
 
-    // No forward address to compare. The same provider failing to read it right now - ProtonVPN once its log
-    // has rotated the connection line away - is no evidence either way, so it is handled as a failed lookup:
+    // No forward address to compare. The same provider failing to read it right now - ProtonVPN when its
+    // gateway does not answer and its log has rotated the connection line away - is no evidence either way, so it is handled as a failed lookup:
     // the hold ends but the episode, its reconnects and its give-up stay, or the next fresh log line would
     // start a whole new round of reconnects hours after a give-up. The exit address goes, so the status file
     // does not show the old differing pair beside a cleared mismatch. After a give-up the hold stays instead

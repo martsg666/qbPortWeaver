@@ -38,19 +38,41 @@ public sealed partial class ProtonVpnManager : IVpnManager
     // Read lazily, once per instance: only the exit-address check needs them (on a closed or undetermined
     // port test, on an open one while exit reconnects are spent, and in Diagnostics), whereas the port is
     // read every cycle. The server lines are written once per
-    // connection, so on a long session they sit far back in the file or in the rotated one; only when both
-    // files have lost them do they stay null, and the check does not run.
+    // connection, so on a long session they sit far back in the file or in the rotated one, and once both
+    // files have lost them they stay null: the address is then asked from the gateway (see
+    // GetForwardAddressAsync), and the server name is left out of the messages.
     private bool _serverScanned;
     private System.Net.IPAddress? _serverAddress;
     private string? _serverName;
+
+    // The forward address GetForwardAddressAsync settled on, once per instance like the scan above.
+    private bool _forwardResolved;
+    private System.Net.IPAddress? _forwardAddress;
 
     /// <inheritdoc />
     public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
 
     /// <inheritdoc />
-    public System.Net.IPAddress? ForwardAddress
+    // The tunnel gateway first: ProtonVPN forwards the port through NAT-PMP on it, so its external address
+    // is the forward address, the same reply NAT-PMP mode reads (the newest log line has matched it). The
+    // log's server line is the fallback for a gateway that does not answer; it is written once per
+    // connection and rotates out of both log files within hours, so on its own the check would stop
+    // running a few hours into a connection.
+    public async Task<System.Net.IPAddress?> GetForwardAddressAsync(CancellationToken cancellationToken = default)
     {
-        get { EnsureServerScanned(); return _serverAddress; }
+        if (_forwardResolved) return _forwardAddress;
+        string? adapter = ActiveAdapterName;
+        System.Net.IPAddress? address = adapter is null
+            ? null
+            : await NatPmpManager.QueryExternalAddressAsync(adapter, cancellationToken).ConfigureAwait(false);
+        if (address is null)
+        {
+            EnsureServerScanned();
+            address = _serverAddress;
+        }
+        _forwardAddress = address;
+        _forwardResolved = true;
+        return address;
     }
 
     /// <inheritdoc />

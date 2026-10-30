@@ -288,6 +288,26 @@ public sealed class NatPmpManager : IVpnManager
         return new NatPmpManager(nic, gateway, mappingLifetime, forwardAddress);
     }
 
+    /// <summary>
+    /// Asks the gateway of the up adapter named <paramref name="adapterName"/> for its external address
+    /// (RFC 6886 opcode 0), without creating a manager or a mapping. Returns <see langword="null"/> when the
+    /// adapter is not up, has no gateway, the gateway does not answer, or it answers 0.0.0.0.
+    /// </summary>
+    /// <remarks>For ProtonVPN, whose port is forwarded through NAT-PMP on its tunnel gateway: the address
+    /// that gateway reports is the one the port is forwarded on, read the same way NAT-PMP mode reads it.
+    /// Two attempts rather than the full three: this runs inside the exit-address check, which only
+    /// falls back to another source when it gets nothing.</remarks>
+    internal static async Task<IPAddress?> QueryExternalAddressAsync(string adapterName, CancellationToken cancellationToken = default)
+    {
+        NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
+            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+        if (nic is null || ResolveGateway(nic) is not { } gateway) return null;
+
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, 2, cancellationToken).ConfigureAwait(false);
+        LogProbeResultDebug("QueryExternalAddressAsync", adapterName, gateway, externalIp);
+        return externalIp is null || externalIp.Equals(IPAddress.Any) ? null : externalIp;
+    }
+
     // Transfers renewal state from a previous instance so that port renewal works correctly
     // when a fresh NatPmpManager instance is created each cycle.
     internal void CopyRenewalStateFrom(NatPmpManager other)

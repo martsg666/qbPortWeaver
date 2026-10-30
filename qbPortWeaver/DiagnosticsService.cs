@@ -279,7 +279,7 @@ public static class DiagnosticsService
     // row that explains a closed "Port reachable" below, and it is the one the user acts on.
     private static async Task AddVpnExitAddressResultAsync(List<DiagnosticResult> results, IVpnManager vpn, int port, CancellationToken cancellationToken)
     {
-        if (vpn.ForwardAddress is not System.Net.IPAddress forward) return;
+        if (await vpn.GetForwardAddressAsync(cancellationToken).ConfigureAwait(false) is not System.Net.IPAddress forward) return;
 
         if (vpn.TunnelAddress is not System.Net.IPAddress local)
         {

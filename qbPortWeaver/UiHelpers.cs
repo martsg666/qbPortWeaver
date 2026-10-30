@@ -4,9 +4,10 @@ using System.Runtime.InteropServices;
 
 namespace qbPortWeaver;
 
-/// <summary>Shared WinForms helpers: owner-drawn glyphs, the search-toolbar layout used by the log and help
-/// viewers, foreground activation for a tray app with no owner window, and clipboard access that
-/// tolerates another process holding the clipboard open.</summary>
+/// <summary>Shared WinForms helpers: fitting a window to the screen's working area, owner-drawn glyphs, the
+/// search-toolbar layout used by the log and help viewers, URL validation and opening, foreground
+/// activation for a tray app with no owner window, and clipboard access that tolerates another process
+/// holding the clipboard open.</summary>
 public static class UiHelpers
 {
     /// <summary>

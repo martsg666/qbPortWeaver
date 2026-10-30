@@ -61,7 +61,8 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
 
     // Rate-limiter state for recovery attempted while offline: how many attempts this streak has made
     // (0 = none, so the next one runs immediately) and the Environment.TickCount64 reading of the last
-    // one. Reset when the connectivity probe next succeeds, or when a cycle fetches a port. The gate
+    // one. Reset when the connectivity probe next succeeds, when a cycle fetches a port, or when the
+    // provider or adapter changes (ResetForNewContext). The gate
     // these belong to runs only from TriggerRecoveryIfDueAsync.
     private int _offlineRecoveryAttempts;
     private long _lastOfflineRecoveryMs;

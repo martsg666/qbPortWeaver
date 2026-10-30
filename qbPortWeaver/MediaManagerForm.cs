@@ -21,6 +21,9 @@ public partial class MediaManagerForm : Form
     private bool _allIncluded = true;
     private bool _isBusy;
     private bool _showOnlyReviewNeeded;
+    // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
+    // not reported as the import being cancelled.
+    private bool _importApplied;
     // Controls disabled while an async operation is running. After the operation, SetBusy(false)
     // re-enables _busyControls and each handler's finally calls UpdateScanStatus() which sets
     // btnImportNow.Enabled appropriately based on the current grid state.
@@ -581,10 +584,6 @@ public partial class MediaManagerForm : Form
             }
         }
     }
-
-    // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
-    // not reported as the import being cancelled.
-    private bool _importApplied;
 
     // Applies proposals, re-scans to refresh the grid, then optionally cleans up empty folders - only those
     // the re-scan could read, and not at all when it could not read the library. Returns the completion

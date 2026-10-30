@@ -247,11 +247,14 @@ public partial class SettingsForm : Form
 
         // A provider that uses an adapter has already started discovery from the selection handler.
         // Any other shows the saved adapter, disabled, until the user switches to one that uses it.
-        // Superseding first keeps a discovery from before a restore from landing over this.
+        // Superseding first keeps a discovery from before a restore from landing over this. With none
+        // saved the box stays empty: no discovery ran, so "No adapters found" would be untrue.
         if (!UsesAdapter(SelectedVpnProvider))
         {
             _ = RenewAdapterDiscoveryTokenAsync();
-            PopulateAdapterCombo([], RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName));
+            string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+            if (savedAdapter.Length == 0) cboVpnAdapter.Items.Clear();
+            else PopulateAdapterCombo([], savedAdapter);
         }
         nudStaticPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort),

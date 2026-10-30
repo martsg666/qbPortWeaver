@@ -937,9 +937,8 @@ public partial class LogViewerForm : Form
     // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
     // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
     // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
-    // behind. Multi-line entries are written - full exceptions (ex.ToString()) by the fatal handlers,
-    // the unexpected-sync-error details line and the Media Manager's two unexpected-error lines - but a
-    // stack trace has no blank lines, so this is reached only by an exception that renders one (an
+    // behind. Multi-line entries are written - every log line that carries a full exception
+    // (ex.ToString()) - but a stack trace has no blank lines, so this is reached only by an exception that renders one (an
     // AggregateException with several inner exceptions ends its list with one): one stray blank row,
     // cosmetic. Telling the two apart would mean inferring structure the log format does not record -
     // a guess that could just as easily swallow a real cycle separator. If it ever matters, the fix
@@ -1009,10 +1008,9 @@ public partial class LogViewerForm : Form
     // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
     // by inheriting its parent entry's verdict from here.
     //
-    // The continuation path is exercised by the entries that log a full exception (ex.ToString()) -
-    // the fatal handlers, the unexpected-sync-error details and the Media Manager's two
-    // unexpected-error lines. Without it, a stack trace would split from its entry across a filter boundary, silently
-    // and in the one tool used to diagnose it.
+    // The continuation path is exercised by the entries that log a full exception (ex.ToString()).
+    // Without it, a stack trace would split from its entry across a filter boundary, silently and in
+    // the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out

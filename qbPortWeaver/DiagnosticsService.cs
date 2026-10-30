@@ -194,14 +194,22 @@ public static class DiagnosticsService
 
         // Checked before the connection, as the sync loop refuses this configuration before it looks
         // at the adapter: otherwise a down adapter would be reported first, with a hint about the
-        // VPN's port forwarding, and the missing setting would never be named.
-        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) &&
-            !AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort)))
+        // VPN's port forwarding, and the missing setting would never be named. Same order and wording
+        // as PortSyncService.CreateStaticPortVpnManager, so Diagnostics names what the tray names.
+        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
         {
-            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
-            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No forwarded port configured",
-                "Enter the port your VPN provider assigned in Settings → General."));
-            return (null, null);
+            bool noAdapter = string.IsNullOrWhiteSpace(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName));
+            bool noPort = !AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort));
+            if (noAdapter || noPort)
+            {
+                results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
+                results.Add(noAdapter
+                    ? new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No VPN adapter configured",
+                        "Select the VPN adapter in Settings → General.")
+                    : new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No forwarded port configured",
+                        "Enter the port your VPN provider assigned in Settings → General."));
+                return (null, null);
+            }
         }
 
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);

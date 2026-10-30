@@ -93,7 +93,7 @@ public partial class WhatsNewForm : Form
         "starts Nicotine+ and the plugin comes up on a different port than before, the start is no longer " +
         "reported as failed. A port change " +
         "no longer logs Nicotine+ back in after you disconnected it yourself; the new port applies when you " +
-        "connect, and a port check while Nicotine+ is disconnected no longer counts as a closed port. To get the " +
+        "connect, and a port check while you have Nicotine+ disconnected no longer counts as a closed port. To get the " +
         "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
         "Nicotine+.\n\n" +
         "Fixed: several smaller issues\n" +

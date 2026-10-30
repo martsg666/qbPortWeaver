@@ -21,8 +21,9 @@ STATE_IDLE = "idle"
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
-# Nicotine+ is logged out of the server, so nothing listens on the port: a check could only say
-# closed, and qbPortWeaver would count that toward a VPN restart that cannot bring the client back.
+# Nicotine+ was disconnected by the user, or has not connected since the plugin started, so nothing
+# listens on the port: a check could only say closed, and qbPortWeaver would count that toward a VPN
+# restart that cannot bring the client back.
 STATE_OFFLINE = "offline"
 
 # Which mechanism produced the verdict. Both ultimately consult the same Soulseek service, but they

@@ -8,7 +8,8 @@ namespace qbPortWeaver;
 /// <summary>
 /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapterAsync() (sync cycle)
 /// or DiscoverAdaptersAsync() (SettingsForm). Renewal state is transferred across cycles via
-/// CopyRenewalStateFrom() so port renewal works correctly.
+/// CopyRenewalStateFrom() so port renewal works correctly. ProtonVpnManager also uses the static
+/// QueryExternalAddressAsync() to ask its tunnel gateway for the forward address, without building a manager.
 /// </summary>
 public sealed class NatPmpManager : IVpnManager
 {
@@ -338,7 +339,7 @@ public sealed class NatPmpManager : IVpnManager
     // Takes the adapter rather than its properties so the GetIPProperties call is inside this guard.
     // It is the second thing here that throws NetworkInformationException on a briefly unavailable
     // network subsystem, and it throws per adapter - one disappearing mid-enumeration must not cost
-    // the whole scan. Null is "no usable gateway", which both callers already skip.
+    // the whole scan. Null is "no usable gateway", which every caller already skips.
     private static IPAddress? ResolveGateway(NetworkInterface nic)
     {
         IPInterfaceProperties props;

@@ -16,7 +16,6 @@ public sealed class QBittorrentClient : ManagedClientBase
     private const string ApiNetworkInterfaceList = "/api/v2/app/networkInterfaceList";
     private const string ApiNetworkInterfaceAddressList = "/api/v2/app/networkInterfaceAddressList";
     private const string ApiTransferInfo = "/api/v2/transfer/info";
-    private const string ApiAppShutdown = "/api/v2/app/shutdown";
 
     private readonly string _userName;
     private readonly string _password;
@@ -594,34 +593,6 @@ public sealed class QBittorrentClient : ManagedClientBase
                 ? (true, (name, value))
                 : (false, (string.Empty, string.Empty)),
             cancellationToken);
-
-    /// <inheritdoc/>
-    /// <remarks>qBittorrent's own shutdown call, so it exits the way its Exit menu does and saves the state
-    /// it writes only on exit; the base restart then waits for the process to go before killing anything
-    /// left. A transport failure after the request was sent still counts as accepted: qBittorrent may
-    /// close the connection while quitting, and the wait then costs only its timeout if it did not.</remarks>
-    protected override async Task<bool> RequestGracefulExitAsync(CancellationToken cancellationToken)
-    {
-        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
-        try
-        {
-            using var response = await HttpClient.PostAsync($"{Url}{ApiAppShutdown}", null, cancellationToken).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug($"QBittorrentClient.RequestGracefulExitAsync: asked {ClientName} to exit");
-                return true;
-            }
-            LogManager.Instance.LogDebug(
-                $"QBittorrentClient.RequestGracefulExitAsync: HTTP {(int)response.StatusCode} {response.StatusCode} - restarting without a clean exit");
-            return false;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
-        {
-            LogHttpException(nameof(RequestGracefulExitAsync), ex, LogLevel.Debug);
-            return true;
-        }
-    }
 
     /// <inheritdoc/>
     protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)

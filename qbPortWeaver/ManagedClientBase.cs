@@ -16,8 +16,6 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;
     protected const int ProcessKillRetryDelayMs = 1000;
-    // How long a client asked to exit cleanly (RequestGracefulExitAsync) gets before it is killed.
-    private const int GracefulExitWaitMs = 15000;
     protected const int ProcessExitPollMs = 500;
     private const int ApiReadyPollIntervalMs = 500;
     private const int ApiReadyTimeoutSeconds = 30;
@@ -100,21 +98,17 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     }
 
     /// <inheritdoc/>
-    /// <remarks>Asks the client to exit cleanly where it can (<see cref="RequestGracefulExitAsync"/>), then
-    /// kills whatever remains and launches a new instance. Subclasses may override
-    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the exit step.</remarks>
+    /// <remarks>Kills all running processes and launches a new instance. Subclasses may override
+    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the kill step.
+    /// <para>No clean exit is asked for first. qBittorrent keeps a port set through its API across a kill,
+    /// and an active qBittorrent session took longer than a reasonable wait to exit when asked, so the
+    /// request only delayed the restart. Transmission, which does lose
+    /// settings to a kill, closes its window in its own RestartAsync.</para></remarks>
     public virtual async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             await PreRestartAsync(cancellationToken).ConfigureAwait(false);
-            // A clean exit saves state a kill would lose. Warn when it does not happen in time, as the
-            // Transmission restart does, because the kill below then loses that state after all.
-            if (await RequestGracefulExitAsync(cancellationToken).ConfigureAwait(false)
-                && !await WaitForProcessExitAsync(GracefulExitWaitMs, cancellationToken).ConfigureAwait(false))
-                LogManager.Instance.LogMessage(
-                    $"{ClientName} did not exit within {GracefulExitWaitMs / 1000} seconds of the exit request - force-closing it; " +
-                    "state it saves only on exit may be lost", LogLevel.Warn);
             // Kill all running processes and verify none remain before launching the new instance,
             // to avoid the new process inheriting a port or file lock held by a still-dying instance.
             if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
@@ -146,7 +140,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // had never actually looked at. Making it abstract forces each one to answer for itself.
     public abstract Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Called by <see cref="RestartAsync"/> before the graceful-exit request and the kill. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
+    /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     // Launches the process, waits for the OS to register it, confirms it is running, then polls the
@@ -240,11 +234,6 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
 
     /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
     protected virtual string ApiLabel => "Web UI";
-
-    // Asks the client to exit cleanly before a restart. True when the request was accepted, so a
-    // process exit should follow; false when the client has no such request or it could not be made,
-    // and the restart goes straight to the kill as it always did.
-    protected virtual Task<bool> RequestGracefulExitAsync(CancellationToken cancellationToken) => Task.FromResult(false);
 
     // Polls for every ProcessName process to exit. True once none is left, false if one is still running
     // when timeoutMs runs out. Monotonic clock, so a wall-clock change cannot stretch or cut the wait.

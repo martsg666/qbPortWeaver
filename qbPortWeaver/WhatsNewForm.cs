@@ -115,8 +115,7 @@ public partial class WhatsNewForm : Form
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +
         "now has time to close normally, so a password or other setting changed in it is no longer lost, " +
         "unless Transmission is set to stay in the notification area when its window closes; the log then " +
-        "says so. qBittorrent is now asked to exit cleanly before a restart instead of being closed " +
-        "abruptly, so what it saves on exit is kept. A port change whose client restart fails is now still recorded in the port history and " +
+        "says so. A port change whose client restart fails is now still recorded in the port history and " +
         "notified, and the post-update command still runs, with the failure in the status file. In " +
         "confirmation dialogs Enter now answers Yes or OK, and No when the action deletes something, and " +
         "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows. " +

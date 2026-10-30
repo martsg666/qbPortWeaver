@@ -316,7 +316,7 @@ internal static partial class MediaImporter
         if (IsFileWriteComplete(fi.FullName)) return true;
         // Debug: the normal state of a file still being written, retried every cycle - but without a line
         // the log cannot say why a finished file another process keeps open is never imported.
-        LogManager.Instance.LogDebug($"MediaImporter.IsFileReadyForImport: Skipped '{fi.Name}' - it is open for writing by another process", Subsystem.MediaManager);
+        LogManager.Instance.LogDebug($"MediaImporter.IsFileReadyForImport: Skipped '{fi.Name}' - it could not be opened for reading (usually still being written by another process)", Subsystem.MediaManager);
         return false;
     }
 

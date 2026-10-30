@@ -265,31 +265,10 @@ public sealed class NatPmpManager : IVpnManager
     /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
     public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
     {
-        NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
-            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
-
-        if (nic is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
+        if (await ProbeAdapterAsync(nameof(TryCreateForAdapterAsync), adapterName, MaxAttempts, cancellationToken).ConfigureAwait(false)
+                is not { ExternalIp: { } externalIp } probe)
             return null;
-        }
-
-        IPAddress? gateway = ResolveGateway(nic);
-        if (gateway is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
-            return null;
-        }
-
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
-        LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
-
-        if (externalIp is null) return null;
-
-        // RFC 6886 lets a gateway with no public address yet answer 0.0.0.0. It still speaks NAT-PMP, but
-        // that is no forward address: compared with the exit address it would report a false mismatch.
-        IPAddress? forwardAddress = externalIp.Equals(IPAddress.Any) ? null : externalIp;
-        return new NatPmpManager(nic, gateway, mappingLifetime, forwardAddress);
+        return new NatPmpManager(probe.Nic, probe.Gateway, mappingLifetime, AsForwardAddress(externalIp));
     }
 
     /// <summary>
@@ -303,23 +282,37 @@ public sealed class NatPmpManager : IVpnManager
     /// inside the exit-address check, which only falls back to another source when it gets nothing.</remarks>
     internal static async Task<IPAddress?> QueryExternalAddressAsync(string adapterName, CancellationToken cancellationToken = default)
     {
+        var probe = await ProbeAdapterAsync(nameof(QueryExternalAddressAsync), adapterName, ExternalAddressQueryAttempts, cancellationToken).ConfigureAwait(false);
+        return probe?.ExternalIp is { } externalIp ? AsForwardAddress(externalIp) : null;
+    }
+
+    // The steps both single-adapter entry points share: the named adapter if it is up, its gateway, and
+    // that gateway's answer to an external-address request (null when it did not answer). Null when the
+    // adapter is not up or has no usable gateway. Each step is logged under the caller's name.
+    private static async Task<(NetworkInterface Nic, IPAddress Gateway, IPAddress? ExternalIp)?> ProbeAdapterAsync(
+        string caller, string adapterName, int attempts, CancellationToken cancellationToken)
+    {
         NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
             .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
         if (nic is null)
         {
-            LogManager.Instance.LogDebug($"NatPmpManager.QueryExternalAddressAsync: '{adapterName}' not found or not up");
+            LogManager.Instance.LogDebug($"NatPmpManager.{caller}: '{adapterName}' not found or not up");
             return null;
         }
         if (ResolveGateway(nic) is not { } gateway)
         {
-            LogManager.Instance.LogDebug($"NatPmpManager.QueryExternalAddressAsync: '{adapterName}' no resolvable gateway");
+            LogManager.Instance.LogDebug($"NatPmpManager.{caller}: '{adapterName}' no resolvable gateway");
             return null;
         }
 
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, ExternalAddressQueryAttempts, cancellationToken).ConfigureAwait(false);
-        LogProbeResultDebug("QueryExternalAddressAsync", adapterName, gateway, externalIp);
-        return externalIp is null || externalIp.Equals(IPAddress.Any) ? null : externalIp;
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, attempts, cancellationToken).ConfigureAwait(false);
+        LogProbeResultDebug(caller, adapterName, gateway, externalIp);
+        return (nic, gateway, externalIp);
     }
+
+    // RFC 6886 lets a gateway with no public address yet answer 0.0.0.0. It still speaks NAT-PMP, but
+    // that is no forward address: compared with the exit address it would report a false mismatch.
+    private static IPAddress? AsForwardAddress(IPAddress externalIp) => externalIp.Equals(IPAddress.Any) ? null : externalIp;
 
     // Transfers renewal state from a previous instance so that port renewal works correctly
     // when a fresh NatPmpManager instance is created each cycle.

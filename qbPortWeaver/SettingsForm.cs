@@ -140,8 +140,8 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
-        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords and the TMDB API key are not included, because Windows ties them to this user account on this machine.");
-        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords and the TMDB API key are left as they are.");
+        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords, the TMDB API key and the Nicotine+ token are not included, because Windows ties them to this user account on this machine.");
+        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords, the TMDB API key and the Nicotine+ token are left as they are.");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
@@ -153,7 +153,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
-        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected, at most 3 times in a row until it reconnects");
         // Covers all three behaviours this one checkbox gates, not just the identifier case it was
         // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
         // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one
@@ -197,7 +197,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkNicotineWarnOnInterfaceMismatch, "Show a warning when Nicotine+'s network interface does not match the configured VPN provider");
         toolTip.SetToolTip(nudNicotineDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(btnInstallNicotinePlugin, "Install the qbPortWeaver bridge plugin into Nicotine+. Nicotine+ has no remote control of its own, so the plugin is what makes port sync possible.");
-        toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after a successful port update (leave empty to disable)");
+        toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after the port is updated, also when restarting the client afterwards failed (leave empty to disable)");
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkResyncOnNetworkChange, "When a network or VPN connection change is detected, run a sync right away instead of waiting for the next interval - so the client follows a VPN reconnect within seconds. Pausing still suppresses the cycle.");
@@ -209,7 +209,7 @@ public partial class SettingsForm : Form
         // matches the Status panel row and the log line so a user recognises one rule, not two.
         toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no installed ProtonVPN or PIA) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Stops after 3 attempts that do not restore a forwarded port, and resumes once one is found. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again, or the VPN provider or adapter changes. If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one (none when the gateway is itself behind another NAT, where a reconnect cannot help). Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
         toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way).");
@@ -247,11 +247,14 @@ public partial class SettingsForm : Form
 
         // A provider that uses an adapter has already started discovery from the selection handler.
         // Any other shows the saved adapter, disabled, until the user switches to one that uses it.
-        // Superseding first keeps a discovery from before a restore from landing over this.
+        // Superseding first keeps a discovery from before a restore from landing over this. With none
+        // saved the box stays empty: no discovery ran, so "No adapters found" would be untrue.
         if (!UsesAdapter(SelectedVpnProvider))
         {
             _ = RenewAdapterDiscoveryTokenAsync();
-            PopulateAdapterCombo([], RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName));
+            string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+            if (savedAdapter.Length == 0) cboVpnAdapter.Items.Clear();
+            else PopulateAdapterCombo([], savedAdapter);
         }
         nudStaticPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort),
@@ -439,7 +442,8 @@ public partial class SettingsForm : Form
             cboVpnAdapter.Enabled &&
             cboVpnAdapter.SelectedItem?.ToString() == SelectAdapterPlaceholder)
         {
-            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, would apply the port while the VPN is down.");
+            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, " +
+                "would apply the port while the VPN is down.\n\nIf it is not listed, connect the VPN so its adapter is up, then click ⟳.");
             return false;
         }
 
@@ -1068,7 +1072,8 @@ public partial class SettingsForm : Form
 
         btnInstallNicotinePlugin.Text = status.State switch
         {
-            NicotinePluginState.NotInstalled => "Install Plugin…",
+            // Nothing can be installed yet either way; clicking reports the missing data folder.
+            NicotinePluginState.NotInstalled or NicotinePluginState.DataFolderMissing => "Install Plugin…",
             NicotinePluginState.Outdated => "Update Plugin…",
             NicotinePluginState.NotEnabled => "Enable Plugin…",
             _ => "Reinstall Plugin…"

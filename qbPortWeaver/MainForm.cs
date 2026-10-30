@@ -15,6 +15,7 @@ public partial class MainForm : Form
     private ToolStripMenuItem _pauseSyncMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _checkUpdatesMenuItem = null!;
+    private ToolStripMenuItem _runDiagnosticsMenuItem = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
@@ -100,6 +101,12 @@ public partial class MainForm : Form
     // Shutdown cancellation token to signal graceful exit
     private readonly CancellationTokenSource _shutdownCts = new();
 
+    // Its token, taken once while the source is alive. The source is disposed with the form, but the main
+    // loop is not awaited on exit and may still be unwinding a cancelled cycle on a background thread;
+    // reading _shutdownCts.Token there would throw ObjectDisposedException and log a clean exit as two
+    // Error lines. A token of a source that was cancelled before it was disposed keeps working.
+    private readonly CancellationToken _shutdownToken;
+
     // Guard so SetVisibleCore fires OnLoad exactly once
     private bool _formLoaded;
 
@@ -122,6 +129,7 @@ public partial class MainForm : Form
 
     public MainForm()
     {
+        _shutdownToken = _shutdownCts.Token;
         InitializeComponent();
 
         // Guard against the Visual Studio designer instantiating MainForm: runtime-only side effects
@@ -202,7 +210,7 @@ public partial class MainForm : Form
 
             // Schedule periodic update checks every 12 hours
             _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-            _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
+            _updateCheckTimer.Tick += updateCheckTimer_Tick;
             _updateCheckTimer.Start();
         }
         catch (Exception ex)
@@ -372,7 +380,9 @@ public partial class MainForm : Form
 
         // Status and diagnostics
         _trayMenu.Items.Add("Show Status", null, showStatus_Click);
-        _trayMenu.Items.Add("Run Diagnostics", null, runDiagnostics_Click);
+        _runDiagnosticsMenuItem = new ToolStripMenuItem("Run Diagnostics");
+        _runDiagnosticsMenuItem.Click += runDiagnostics_Click;
+        _trayMenu.Items.Add(_runDiagnosticsMenuItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Logs
@@ -472,7 +482,8 @@ public partial class MainForm : Form
 
     private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
 
-    private async void runDiagnostics_Click(object? sender, EventArgs e) => await RunDiagnosticsAsync(null); // async void is correct here (WinForms event handler)
+    private async void runDiagnostics_Click(object? sender, EventArgs e) => // async void is correct here (WinForms event handler)
+        await RunDiagnosticsAsync("Diagnostics requested", null, ShowDiagnosticsResults);
 
     private void ShowStatusPanel()
     {
@@ -488,7 +499,8 @@ public partial class MainForm : Form
         form.SyncRequested += (_, _) => RequestManualSync();
         form.PauseResumeRequested += (_, _) => ToggleSyncPaused();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
-        form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync(form); // async void event handler (WinForms)
+        form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync("Diagnostics requested", null, ShowDiagnosticsResults); // async void event handler (WinForms)
+        if (_diagnosticsRunning) form.SetDiagnosticsRunning(true); // opened mid-run: the run's finally re-enables it
         return form;
     }
 
@@ -499,7 +511,7 @@ public partial class MainForm : Form
         form.SetReachableChecking();
         LogManager.Instance.LogMessage("Manual port test requested", LogLevel.Info);
         bool? open;
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
         cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
         try
         {
@@ -529,22 +541,19 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage($"Manual port test result: {result}", LogLevel.Info);
     }
 
-    // From the Status panel button or the tray menu: runs diagnostics and opens (or refreshes) the
-    // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
-    // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
-    // concurrently.
-    private Task RunDiagnosticsAsync(StatusForm? form) => RunDiagnosticsAsync(
-        "Diagnostics requested",
-        form is null ? null : running => { if (!form.IsDisposed) form.SetDiagnosticsRunning(running); },
-        ShowDiagnosticsResults);
-
-    // The one run wrapper behind the three entry points: the concurrency guard, the busy toggle on
-    // whichever form asked (checked for disposal, since the user can close it mid-run), the request
-    // line, and the result sink.
+    // The one run wrapper behind the three entry points (the tray menu, the Status panel, the results
+    // dialog's Re-run): the concurrency guard, the busy toggle on whichever form asked (checked for
+    // disposal, since the user can close it mid-run), the request line, and the result sink. The tray
+    // item, the Status panel's button and an open results dialog's Re-run grey out for every run,
+    // whichever started it: a click on any of them during a run is ignored by the guard, so without this
+    // nothing said a run was already going. A Status panel opened mid-run is greyed in CreateStatusForm.
     private async Task RunDiagnosticsAsync(string requestLine, Action<bool>? setBusy, Action<IReadOnlyList<DiagnosticResult>> showResults)
     {
         if (_diagnosticsRunning) return;
         _diagnosticsRunning = true;
+        _runDiagnosticsMenuItem.Enabled = false;
+        if (_statusForm is { IsDisposed: false } panel) panel.SetDiagnosticsRunning(true);
+        _diagnosticsForm?.SetRunning(true);
         setBusy?.Invoke(true);
         LogManager.Instance.LogMessage(requestLine, LogLevel.Info);
         try
@@ -555,6 +564,9 @@ public partial class MainForm : Form
         finally
         {
             _diagnosticsRunning = false;
+            _runDiagnosticsMenuItem.Enabled = true;
+            if (_statusForm is { IsDisposed: false } openPanel) openPanel.SetDiagnosticsRunning(false);
+            _diagnosticsForm?.SetRunning(false);
             setBusy?.Invoke(false);
         }
     }
@@ -582,7 +594,7 @@ public partial class MainForm : Form
     // continuation back to the UI thread for ShowDiagnosticsResults.
     private async Task<IReadOnlyList<DiagnosticResult>?> RunDiagnosticsCoreAsync()
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
         cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
         try
         {
@@ -652,7 +664,7 @@ public partial class MainForm : Form
     private void pauseSync_Click(object? sender, EventArgs e) => ToggleSyncPaused();
 
     // Shared by the tray menu's Pause/Resume item and the Status panel's Pause/Resume button.
-    // On pause the tray feedback flips immediately via OnSyncCompleted, which also refreshes the
+    // On pause the tray feedback flips immediately via PublishPausedStatus, which also refreshes the
     // panel; on resume the delay is interrupted so a cycle starts now, and the panel is refreshed
     // directly so its button label and Next sync estimate update without waiting for that cycle.
     private void ToggleSyncPaused()
@@ -662,7 +674,7 @@ public partial class MainForm : Form
         if (_syncPaused)
         {
             LogManager.Instance.LogMessage("Syncing paused by user", LogLevel.Info);
-            OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+            PublishPausedStatus();
         }
         else
         {
@@ -727,8 +739,8 @@ public partial class MainForm : Form
 
     private void exit_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    // Called by PortSyncService when a sync cycle completes, and directly by the pause
-    // handling (pauseSync_Click and the paused loop branch) to publish the Paused status.
+    // Called by PortSyncService when a sync cycle completes, and directly through PublishPausedStatus
+    // (ToggleSyncPaused, the paused loop branch, and the end of a cycle that ran while paused).
     private void OnSyncCompleted(TrayStatus status)
     {
         _lastSyncStatus = status;
@@ -840,12 +852,12 @@ public partial class MainForm : Form
             LogLevel.Error);
     }
 
-    // Publishes the Paused tray status while cycles are being skipped. Re-published on every
-    // skipped interval because a one-shot manual sync while paused leaves that cycle's result
-    // on the tray, and this puts the paused status back.
+    // Publishes the Paused tray status: while cycles are being skipped, re-published on every skipped
+    // interval because a one-shot manual sync while paused leaves that cycle's result on the tray, and
+    // at the end of a cycle that was already running when sync was paused, for the same reason.
     private void PublishPausedStatus()
     {
-        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - skipping cycle");
+        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - showing the paused status");
         OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
     }
 
@@ -856,7 +868,7 @@ public partial class MainForm : Form
         int updateInterval;
         bool manualSync;
         bool quickRecheck;
-        await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+        await _updateSemaphore.WaitAsync(_shutdownToken);
         try
         {
             LogManager.Instance.LogBlankLine();
@@ -871,7 +883,7 @@ public partial class MainForm : Form
             _manualSyncTriggered = false;
             quickRecheck = _quickRecheckPending;
             _quickRecheckPending = false;
-            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
+            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownToken);
         }
         finally
         {
@@ -893,6 +905,11 @@ public partial class MainForm : Form
         {
             updateInterval = AppConstants.ManualSyncWaitSeconds;
         }
+        // Paused while this cycle was running: its SyncCompleted has just put its own result on the tray,
+        // and the loop would not publish Paused again until the full interval had passed. A manual sync is
+        // left showing its result, as it always was; the next skipped interval restores Paused.
+        if (_syncPaused && !manualSync)
+            PublishPausedStatus();
         return updateInterval;
     }
 
@@ -902,7 +919,7 @@ public partial class MainForm : Form
     {
         try
         {
-            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token);
+            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownToken);
             return true;
         }
         catch (OperationCanceledException)
@@ -934,7 +951,7 @@ public partial class MainForm : Form
         {
             try
             {
-                await MediaManagerService.ImportAsync(_shutdownCts.Token);
+                await MediaManagerService.ImportAsync(_shutdownToken);
             }
             catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
             {
@@ -943,7 +960,9 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
+                // The full exception, as the Media Manager window's catch-alls log it: a failure here is
+                // unexpected, and its type and stack are what a report needs.
+                LogManager.Instance.LogMessage($"Media import cycle failed: {ex}", LogLevel.Error, Subsystem.MediaManager);
             }
             finally
             {
@@ -962,7 +981,7 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: Waiting {updateInterval} seconds before next cycle");
             // Link both tokens: _delayCts (manual sync) and _shutdownCts (app exit)
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownCts.Token);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownToken);
             await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
         }
         catch (OperationCanceledException)
@@ -983,7 +1002,7 @@ public partial class MainForm : Form
 
     // Periodic update-check timer tick. Uses intrusive: false so a 12-hour tick surfaces an available
     // update via the tray (menu item + balloon) rather than popping the UpdateAvailableForm in the user's face.
-    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+    private async void updateCheckTimer_Tick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.
@@ -1002,7 +1021,7 @@ public partial class MainForm : Form
         try
         {
             LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
-            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownCts.Token);
+            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownToken);
             if (info is null)
                 NotifyUpdateCheckFailed(manual);
             else if (info.IsNewer)
@@ -1020,11 +1039,13 @@ public partial class MainForm : Form
     // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Info.
     // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
     // (the manual balloon would otherwise show false information).
+    // Through ShowWarningBalloon so the click state is set like every other warning balloon's. opensLog:
+    // false, because a click opens the Log Viewer on the latest Warn and this cause is logged at Info, so it
+    // would land on an unrelated warning; left as it was, a click did whatever an earlier balloon had set.
     private void NotifyUpdateCheckFailed(bool manual)
     {
         if (manual)
-            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+            ShowWarningBalloon("Could not check for updates - see the log for details.", opensLog: false);
     }
 
     private void NotifyUpToDate(bool manual)
@@ -1297,7 +1318,7 @@ public partial class MainForm : Form
             onClosed?.Invoke(frm);
             setter(null);
         };
-        frm.Show();
+        frm.Show(); // NOSONAR S6966 - non-modal is intentional: ShowOrActivate keeps one live instance and re-activates it
         onActivated?.Invoke(frm);
     }
 

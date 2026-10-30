@@ -28,7 +28,9 @@ public static class HelperProtocol
     public const string PipeName = "qbPortWeaverHelper";
 
     /// <summary>
-    /// Windows service name of the helper service, also used as its EventLog source. The same
+    /// Windows service name of the helper service. The SCM's own start and stop entries in the event log
+    /// appear under this name, but the helper's runtime warnings (pipe rejections and the like) are
+    /// logged under its host's application name, <c>qbPortWeaver.HelperService</c>. The same
     /// string as <see cref="PipeName"/> by construction, kept as its own constant so the call
     /// sites that talk to the SCM read as service lookups rather than as a pipe name in the
     /// wrong place.
@@ -51,7 +53,7 @@ public static class HelperProtocol
     /// <summary>Result key: number of ERROR-level entries the helper wrote during the action.</summary>
     public const string ResultErrorKey = "error";
 
-    /// <summary>Result sentinel: the helper rejected the request (session token mismatch).</summary>
+    /// <summary>Result sentinel: the helper rejected the request (session token mismatch, or the caller could not be verified).</summary>
     public const string ResultRejectedSentinel = "rejected";
 
     /// <summary>

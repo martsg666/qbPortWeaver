@@ -138,6 +138,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         _themeColors = [ThemeColors.LogError, ThemeColors.LogWarning, ThemeColors.LogInfo, ThemeColors.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
@@ -210,12 +211,13 @@ public partial class LogViewerForm : Form
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
-    // Escape closes the viewer, except while the search box has focus - there Escape clears the search
+    // Escape closes the viewer, except while the search box has focus and holds text - there Escape clears the search
     // (handled in txtSearch_KeyDown). Ctrl+F focuses the search box (same as the Help viewer).
     // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0)
+            && ActiveControl is not ComboBox { DroppedDown: true })
         {
             Close();
             e.Handled = true;
@@ -445,8 +447,6 @@ public partial class LogViewerForm : Form
         if (index < 0 || index >= TimeRanges.Length) return (null, null);
         return TimeRanges[index].Hours is double hours ? (DateTime.Now.AddHours(-hours), null) : (null, null);
     }
-
-
 
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
@@ -935,9 +935,8 @@ public partial class LogViewerForm : Form
     // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
     // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
     // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
-    // behind. Multi-line entries are written - full exceptions (ex.ToString()) by the fatal handlers,
-    // the unexpected-sync-error details line and the Media Manager's unexpected-error line - but a
-    // stack trace has no blank lines, so this is reached only by an exception that renders one (an
+    // behind. Multi-line entries are written - every log line that carries a full exception
+    // (ex.ToString()) - but a stack trace has no blank lines, so this is reached only by an exception that renders one (an
     // AggregateException with several inner exceptions ends its list with one): one stray blank row,
     // cosmetic. Telling the two apart would mean inferring structure the log format does not record -
     // a guess that could just as easily swallow a real cycle separator. If it ever matters, the fix
@@ -1007,10 +1006,9 @@ public partial class LogViewerForm : Form
     // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
     // by inheriting its parent entry's verdict from here.
     //
-    // The continuation path is exercised by the entries that log a full exception (ex.ToString()) -
-    // the fatal handlers, the unexpected-sync-error details and the Media Manager's unexpected-error
-    // line. Without it, a stack trace would split from its entry across a filter boundary, silently
-    // and in the one tool used to diagnose it.
+    // The continuation path is exercised by the entries that log a full exception (ex.ToString()).
+    // Without it, a stack trace would split from its entry across a filter boundary, silently and in
+    // the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
@@ -1594,6 +1592,7 @@ public partial class LogViewerForm : Form
             TextAlign = ContentAlignment.MiddleCenter,
             Font = lvLog.Font,
             Visible = false,
+            UseMnemonic = false, // shows exception text, which can hold a path with '&' in it
         };
         lvLog.Parent!.Controls.Add(_metaLabel);
         SyncMetaLabelBounds();
@@ -1620,5 +1619,4 @@ public partial class LogViewerForm : Form
             DoubleBuffered = true;
         }
     }
-
 }

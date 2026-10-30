@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 
 namespace qbPortWeaver.Shared;
 
@@ -16,7 +15,8 @@ public enum ProcessKillOutcome
     KilledByTaskkill,
     /// <summary>Stage 3 (retry of <see cref="Process.Kill(bool)"/>) succeeded and the process exited within the timeout.</summary>
     KilledByProcessKillRetry,
-    /// <summary>Process is access-denied or protected (Win32Exception) - no further escalation will help.</summary>
+    /// <summary>Process is access-denied or protected (a Win32Exception, or an AggregateException of them with
+    /// the target still running after the exit wait) - no further escalation will help.</summary>
     AccessDenied,
     /// <summary>All three escalation stages completed without the process exiting within their timeouts.</summary>
     StillRunning,
@@ -57,9 +57,11 @@ public static class ProcessKillHelper
     public static ProcessKillResult KillProcessTreeWithEscalation(Process process, int timeoutMs)
     {
         // Stage 1: Process.Kill
+        AggregateException? treeError;
         try
         {
             process.Kill(entireProcessTree: true);
+            treeError = null;
         }
         catch (InvalidOperationException)
         {
@@ -69,8 +71,15 @@ public static class ProcessKillHelper
         {
             return new ProcessKillResult(ProcessKillOutcome.AccessDenied, null);
         }
+        catch (AggregateException ex)
+        {
+            // Part of the tree resisted; the wait below decides whether the target itself is gone.
+            treeError = ex;
+        }
         if (process.WaitForExit(timeoutMs))
             return new ProcessKillResult(ProcessKillOutcome.KilledByProcessKill, null);
+        if (IsAccessDenied(treeError))
+            return new ProcessKillResult(ProcessKillOutcome.AccessDenied, null);
 
         // Stage 2: taskkill /F /T - run as a child process and wait.
         // Known residual risk, the same one AutoRecovery.KillServiceProcess documents for its PID
@@ -96,6 +105,7 @@ public static class ProcessKillHelper
         try
         {
             process.Kill(entireProcessTree: true);
+            treeError = null;
         }
         catch (InvalidOperationException)
         {
@@ -105,8 +115,22 @@ public static class ProcessKillHelper
         {
             return new ProcessKillResult(ProcessKillOutcome.AccessDenied, taskkillError);
         }
-        return process.WaitForExit(timeoutMs)
-            ? new ProcessKillResult(ProcessKillOutcome.KilledByProcessKillRetry, taskkillError)
-            : new ProcessKillResult(ProcessKillOutcome.StillRunning, taskkillError);
+        catch (AggregateException ex)
+        {
+            // Part of the tree resisted; the wait below decides whether the target itself is gone.
+            treeError = ex;
+        }
+        if (process.WaitForExit(timeoutMs))
+            return new ProcessKillResult(ProcessKillOutcome.KilledByProcessKillRetry, taskkillError);
+        return new ProcessKillResult(IsAccessDenied(treeError) ? ProcessKillOutcome.AccessDenied : ProcessKillOutcome.StillRunning,
+            taskkillError);
     }
+
+    // Kill(entireProcessTree: true) does not throw Win32Exception itself: it collects the failure of
+    // every process in the tree, the target's included, into one AggregateException. Read only once
+    // the exit wait has failed: the target is terminated first and asynchronously, so straight after
+    // Kill a target that is going down can still read as running while only a child refused. A
+    // target still running after the wait, with every failure a Win32Exception, was denied.
+    private static bool IsAccessDenied(AggregateException? treeError) =>
+        treeError is not null && treeError.InnerExceptions.All(e => e is Win32Exception);
 }

@@ -74,9 +74,9 @@ partial class UpdateAvailableForm
         lnkReleaseNotes.Text         = "View release notes";
         lnkReleaseNotes.LinkClicked += lnkReleaseNotes_LinkClicked;
 
-        btnUpdate.Location = new Point(172, 206);
+        btnUpdate.Location = new Point(157, 206);
         btnUpdate.Name     = "btnUpdate";
-        btnUpdate.Size     = new Size(130, 28);
+        btnUpdate.Size     = new Size(145, 28); // fits "Open Download Page", the text when a release has no installer
         btnUpdate.TabIndex = 5;
         btnUpdate.Text     = "Download && Install";
         btnUpdate.Click   += btnUpdate_Click;

@@ -38,11 +38,11 @@ internal static class AutoRecoveryManager
         restartResult.RaiseLogAlerts();
 
         // Only restart the VPN client app if the helper actually completed the service restart.
-        // If the helper was unreachable, rejected the request, or reported errors, killing the
+        // If the helper did not complete the request, rejected it, or reported errors, killing the
         // VPN client UI alone does not fix the underlying VPN service - it just closes the user's
         // VPN client window for nothing.
         // The lower layer (HelperServiceClient / RaiseLogAlerts) already logged the specific cause
-        // for unreachable / rejected; this line communicates the consequence (skipping the client
+        // for incomplete / rejected; this line communicates the consequence (skipping the client
         // restart) with a reason tailored to each failure mode so the two log lines do not look
         // like duplicates.
         if (!restartResult.Completed || restartResult.ErrorCount > 0)
@@ -51,7 +51,9 @@ internal static class AutoRecoveryManager
             if (restartResult.IsRejected)
                 reason = "helper service rejected the command (see prior log entry)";
             else if (!restartResult.Completed)
-                reason = "helper service was unreachable (see prior log entry)";
+                // Not "unreachable": the helper may have been reached and then timed out, closed the
+                // pipe or sent an unreadable reply, or the request was never sent. The prior line says which.
+                reason = "helper service did not complete the request (see prior log entry)";
             else
                 reason = $"helper service reported {TextFormat.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
             LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);
@@ -177,11 +179,12 @@ internal static class AutoRecoveryManager
                 // Leave exePath null so the registry fallback path is used below.
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Could not read exe path for '{processName}': {ex.Message}");
             }
+            int killed = 0;
             foreach (var p in processes)
             {
                 try
                 {
-                    ProcessControl.KillProcess(p, $"Client process '{processName}'");
+                    if (ProcessControl.KillProcess(p, $"Client process '{processName}'")) killed++;
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
             }
@@ -189,10 +192,14 @@ internal static class AutoRecoveryManager
             // exePath is also null when instances *were* killed but MainModule threw (the 32/64-bit
             // mismatch and access-denied cases handled above), and VPN clients commonly run elevated -
             // so using it here would report "was not running" immediately after killing them.
-            if (processes.Length > 0)
-                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
-            else
+            // Counted, so the line only claims the kills that happened: an instance KillProcess could not
+            // end has already been reported by it at Warn, and "Killed" after that would contradict it.
+            if (processes.Length == 0)
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Client process '{processName}' was not running");
+            else if (killed == processes.Length)
+                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
+            else if (killed > 0)
+                LogManager.Instance.LogMessage($"Killed {killed} of {processes.Length} '{processName}' client processes", LogLevel.Info);
             return exePath;
         }
         finally

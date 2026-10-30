@@ -7,7 +7,7 @@
 /// </summary>
 public static class AppIdentity
 {
-    /// <summary>Application name used as the AppData subfolder, EventLog source, and registry root.</summary>
+    /// <summary>Application name used as the AppData subfolder and registry root.</summary>
     public const string AppName = "qbPortWeaver";
 
     /// <summary>HKCU subkey holding app-level settings (above the per-section keys).</summary>

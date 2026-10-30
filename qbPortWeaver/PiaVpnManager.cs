@@ -18,11 +18,8 @@ public sealed class PiaVpnManager : IVpnManager
 
     private const int ProcessTimeoutMs = 5000;
 
-    // Cached path for piactl; null = not found, string.Empty = not yet resolved.
-    // Install paths never change at runtime so we resolve once and reuse.
-    // volatile: the field is written at most once (Empty -> resolved path). Without it a reading
-    // thread on a different core could observe a stale Empty and trigger one redundant re-resolve.
-    private static volatile string? _piactlPathCache = string.Empty;
+    // Cached path for piactl, in PIA's service folder.
+    private static readonly ServiceExeCache _piactlPath = new();
 
     // piactl reports one of four states in place of a port number. Two of them describe a condition no
     // reconnect can change, and those are the ones auto-recovery must not act on:
@@ -189,14 +186,6 @@ public sealed class PiaVpnManager : IVpnManager
 
     private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
 
-    private static string? GetPiactlPath()
-    {
-        // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
-        string? cache = _piactlPathCache;
-        var result = ServiceLookup.FindExeInServiceDirectory(ref cache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
-        // Write back only a resolution - see VpnRegistryConfig.GetClientExePath for the reasoning.
-        // The cache is static, so a caller that failed must not overwrite another thread's result.
-        if (cache is { Length: > 0 }) _piactlPathCache = cache;
-        return result;
-    }
+    private static string? GetPiactlPath() =>
+        _piactlPath.Get(GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
 }

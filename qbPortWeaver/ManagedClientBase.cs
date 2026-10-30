@@ -11,11 +11,12 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // the client was not running) waits longer because the executable and its dependencies are being
     // paged in for the first time; a restart (the image is already in the file cache, and the process
     // was alive moments ago) registers with the OS sooner. Both are only the wait before the
-    // IsRunning check - API readiness is polled separately by WaitForApiReadyAsync.
+    // IsProcessRunning check - API readiness is polled separately by WaitForApiReadyAsync.
     protected const int ProcessStartDelayMs = 2000;   // cold start, via ForceStartAsync
     protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;
     protected const int ProcessKillRetryDelayMs = 1000;
+    protected const int ProcessExitPollMs = 500;
     private const int ApiReadyPollIntervalMs = 500;
     private const int ApiReadyTimeoutSeconds = 30;
     private const int ApiProbeTimeoutSeconds = 2;
@@ -24,10 +25,11 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected readonly string ProcessName;
     protected readonly string ExePath;
     protected readonly HttpClient HttpClient;
-    // Not volatile: IsAuthenticated is only accessed on the single-threaded sync loop so no
-    // cross-thread visibility guarantee is needed. Unlike the static TransmissionClient._resolvedServiceName,
-    // which is shared across sync-cycle instances (hence volatile), this field is confined to a single
-    // client instance and is always read and written on the same thread.
+    // Not volatile: IsAuthenticated is only accessed by one sync cycle at a time, never concurrently.
+    // The awaits run with ConfigureAwait(false), so successive accesses can land on different pool
+    // threads, but each await is a full memory barrier, so a later access always sees the earlier write.
+    // Unlike the static TransmissionClient._resolvedServiceName, which is shared across sync-cycle
+    // instances (hence volatile), this field is confined to a single client instance.
     protected bool IsAuthenticated;
     private bool _disposed;
 
@@ -60,7 +62,12 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     }
 
     /// <inheritdoc/>
-    public virtual bool IsRunning()
+    public virtual bool IsRunning() => IsProcessRunning();
+
+    // Whether a process named ProcessName exists. Separate from IsRunning, which a client can widen (the
+    // Transmission service counts as running too): the kill-and-verify and exit-wait loops act on
+    // processes, so they must ask about processes, or a running service would make them wait and fail.
+    protected bool IsProcessRunning()
     {
         if (string.IsNullOrEmpty(ProcessName)) return false;
 
@@ -92,7 +99,11 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
 
     /// <inheritdoc/>
     /// <remarks>Kills all running processes and launches a new instance. Subclasses may override
-    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the kill step.</remarks>
+    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the kill step.
+    /// <para>No clean exit is asked for first. qBittorrent keeps a port set through its API across a kill,
+    /// and an active qBittorrent session took longer than a reasonable wait to exit when asked, so the
+    /// request only delayed the restart. Transmission, which does lose
+    /// settings to a kill, closes its window in its own RestartAsync.</para></remarks>
     public virtual async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -144,7 +155,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     {
         Process.Start(CreateStartInfo())?.Dispose();
         await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(false);
-        if (!IsRunning())
+        // The launched process, not IsRunning: a client that widens IsRunning (a running Transmission
+        // service) would otherwise report a launch that never happened as a success.
+        if (!IsProcessRunning())
         {
             // The launch itself succeeded, so the most likely cause is a ProcessName that does
             // not match the actual executable - without this hint the caller's generic failure
@@ -213,18 +226,37 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return IsAuthenticated;
     }
 
+    /// <summary>Logs a port write the client answered with a non-success HTTP status, for Transmission and
+    /// Deluge. qBittorrent's PostPreferencesAsync produces the same text, and Nicotine+ reports it through
+    /// its bridge's own HTTP failure line.</summary>
+    protected void LogSetPortHttpFailure(HttpResponseMessage response) =>
+        LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+
     /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
     protected virtual string ApiLabel => "Web UI";
+
+    // Polls for every ProcessName process to exit. True once none is left, false if one is still running
+    // when timeoutMs runs out. Monotonic clock, so a wall-clock change cannot stretch or cut the wait.
+    protected async Task<bool> WaitForProcessExitAsync(int timeoutMs, CancellationToken cancellationToken)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (IsProcessRunning())
+        {
+            if (Environment.TickCount64 >= deadline) return false;
+            await Task.Delay(ProcessExitPollMs, cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
 
     // Kills all processes matching ProcessName, waits for stragglers, then retries once.
     // Returns false (and logs an error) if processes remain after both passes.
     protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
     {
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
-        if (!IsRunning()) return true;
+        if (!IsProcessRunning()) return true;
         await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
-        if (!IsRunning()) return true;
+        if (!IsProcessRunning()) return true;
         LogManager.Instance.LogMessage($"Failed to kill all {ClientName} processes - aborting restart", LogLevel.Error);
         return false;
     }

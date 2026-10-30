@@ -94,7 +94,9 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // map to one standalone target, so only the first would ever import. They are recognised only on
     // unambiguous evidence - two or more files in one folder with the same title and year, each with a
     // different part suffix - so a lone title such as "Title Part 2 (Year)" is never taken for a part.
-    // Every other file gets a null suffix and keeps the standalone layout.
+    // The evidence is the folder on disk, not only this list: it holds just the files ready and not yet
+    // imported, so parts finishing in different cycles would each look alone. Every other file gets a
+    // null suffix and keeps the standalone layout.
     private static List<(string File, string Title, int? Year, string? PartSuffix)> AssignPartSuffixes(
         List<(string File, string Title, int? Year)> files)
     {
@@ -108,14 +110,54 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         {
             var members = group.ToList();
             var suffixes = members.Select(f => ExtractPartSuffix(Path.GetFileName(f.File))).ToList();
-            bool isMultiPart = members.Count > 1 &&
-                               suffixes.TrueForAll(s => s is not null) &&
-                               suffixes.Distinct(StringComparer.OrdinalIgnoreCase).Count() == suffixes.Count;
+            bool isMultiPart = suffixes.TrueForAll(s => s is not null) && IsMultiPartGroup(members[0], members.Select(f => f.File));
 
             for (int i = 0; i < members.Count; i++)
                 result.Add((members[i].File, members[i].Title, members[i].Year, isMultiPart ? suffixes[i] : null));
         }
         return result;
+    }
+
+    // Applies the multi-part rule to the group's files plus every video file beside them with the same
+    // title and year, imported or still being written. Only the source folder is listed: a part an
+    // earlier Move import already took out of it is not seen. A folder that cannot be listed leaves the
+    // group to decide alone. The part numbers must run from 1 with no gap: two versions of one movie
+    // ("DVD5" and "DVD9") carry a part token too, and stacking them would play one after the other.
+    private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
+    {
+        var files = new HashSet<string>(groupFiles, StringComparer.OrdinalIgnoreCase);
+        AddSiblingsOnDisk(first, files);
+
+        var suffixes = files.Select(f => ExtractPartSuffix(Path.GetFileName(f))).ToList();
+        if (suffixes.Count < 2 || !suffixes.TrueForAll(s => s is not null)) return false;
+
+        // A suffix is a letters-only token followed by the part number, so its digits are that number.
+        var numbers = suffixes.Select(s => int.TryParse(new string(s!.Where(char.IsDigit).ToArray()), out var n) ? n : 0)
+                              .Order().ToList();
+        return numbers.SequenceEqual(Enumerable.Range(1, numbers.Count));
+    }
+
+    // Adds the video files beside first that parse to its title and year, for IsMultiPartGroup.
+    private static void AddSiblingsOnDisk((string File, string Title, int? Year) first, HashSet<string> files)
+    {
+        var folder = Path.GetDirectoryName(first.File);
+        if (string.IsNullOrEmpty(folder)) return;
+        try
+        {
+            var paths = MediaImporter.InvokeWithSmbRetry(folder, () => Directory.GetFiles(folder));
+            foreach (var path in paths.Where(FileNameParser.IsVideoFile))
+            {
+                var fileName = Path.GetFileName(path);
+                var (title, year) = FileNameParser.ParseTitleYear(fileName);
+                if (year == first.Year && string.Equals(title, first.Title, StringComparison.OrdinalIgnoreCase)
+                    && !IsBarePartName(fileName, title, year))
+                    files.Add(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MovieProcessor.AddSiblingsOnDisk: Could not list '{folder}': {ex.Message}", Subsystem.MediaManager);
+        }
     }
 
     // Shared opening logic for folder-dependent scan and process methods: validates the file list,
@@ -232,8 +274,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     {
         if (partSuffix is null) return BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
 
-        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(filePath)));
+        return BuildFolderLayoutPath(libraryPath, info, partSuffix, Path.GetExtension(filePath));
     }
 
     // Builds the library target path for a standalone movie file.
@@ -255,8 +296,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         if (!TrySplitPartSuffix(Path.GetFileNameWithoutExtension(editedName), out _, out var partSuffix))
             return BuildStandaloneMoviePath(editedName, info, libraryPath, createFolders);
 
-        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(editedName)));
+        return BuildFolderLayoutPath(libraryPath, info, partSuffix, Path.GetExtension(editedName));
     }
 
     // Splits a name in the multi-part form BuildFolderMovieFileName produces ("Title (Year) - cd1") into
@@ -280,12 +320,15 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).
     // Always places files in a subfolder regardless of createFolders: multi-part files must be grouped
     // together under one folder to avoid name collisions in a flat library root.
-    private string BuildFolderMoviePath(string filePath, MovieInfo info)
+    private string BuildFolderMoviePath(string filePath, MovieInfo info) =>
+        BuildFolderLayoutPath(libraryPath, info, ExtractPartSuffix(Path.GetFileName(filePath)), Path.GetExtension(filePath));
+
+    // The folder layout every multi-part or folder movie path shares: "Title (Year)\" holding the file
+    // BuildFolderMovieFileName names.
+    private static string BuildFolderLayoutPath(string libraryPath, MovieInfo info, string? partSuffix, string extension)
     {
-        var ext = Path.GetExtension(filePath);
         var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-        var partSuffix = ExtractPartSuffix(Path.GetFileName(filePath));
-        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, ext));
+        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, extension));
     }
 
     // Shared naming convention for folder-movie files and their companion subtitles.

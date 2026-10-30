@@ -117,7 +117,7 @@ internal static class SettingsTransfer
 
             AppFiles.WriteAtomic(path, JsonSerializer.Serialize(payload, _writeOptions));
             LogManager.Instance.LogMessage($"Settings exported to {path} ({applied} values)", LogLevel.Info);
-            return new(true, $"Saved {applied} settings to:\n{path}", applied);
+            return new(true, $"Saved {TextFormat.Pluralize(applied, "setting")} to:\n{path}", applied);
         }
         catch (Exception ex)
         {
@@ -334,22 +334,24 @@ internal static class SettingsTransfer
         {
             string nothing = "No settings were restored, so yours are unchanged.";
             if (ignored > 0)
-                nothing += $" All {ignored} entries in the file were skipped, either because this " +
-                           "version does not recognise them or because they could not be written. " +
-                           "The log has the detail.";
+                nothing += (ignored == 1
+                               ? " The one item in the file was skipped, either because this version does not recognise it or because it could not be written."
+                               : $" All {ignored} items in the file were skipped, either because this version does not recognise them or because they could not be written.") +
+                           " The log has the detail.";
             // No secrets paragraph here, unlike the restored case below. It explains what a restore
             // did not bring across; with nothing brought across there is no such gap to explain, and
             // on a warning it would bury the one sentence that matters.
             return nothing;
         }
 
-        string message = $"Restored {applied} settings.";
+        string message = $"Restored {TextFormat.Pluralize(applied, "setting")}.";
         // Covers both reasons an entry is not counted as restored - unknown to this version, or a
         // write that failed - because the user cannot act differently on the two and the log has the
         // detail either way. Claiming only the first would be untrue whenever the hive is locked.
         if (ignored > 0)
-            message += $" {ignored} entries were skipped, either because this version does not " +
-                       "recognise them or because they could not be written. The log has the detail.";
+            message += ignored == 1
+                ? " 1 item was skipped, either because this version does not recognise it or because it could not be written. The log has the detail."
+                : $" {ignored} items were skipped, either because this version does not recognise them or because they could not be written. The log has the detail.";
 
         // Said on every restore that landed something, not only when entries were skipped. Secrets are
         // never in the file at all, so there is nothing for the skipped count to hint at, and someone

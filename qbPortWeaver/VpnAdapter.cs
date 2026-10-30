@@ -1,12 +1,13 @@
-﻿using System.Net.NetworkInformation;
+﻿using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 namespace qbPortWeaver;
 
 /// <summary>
-/// Adapter rules shared by the VPN managers that work through a network adapter chosen in Settings
-/// (<see cref="NatPmpManager"/> and <see cref="StaticPortManager"/>): which adapters are candidates,
-/// whether the chosen one is up, and what auto-recovery does to it. Kept in one place so the two
-/// providers cannot drift apart on any of them.
+/// Adapter rules shared by the VPN managers that work through a network adapter: which adapters are
+/// candidates, whether one is up and what its address is, and what auto-recovery does to an adapter
+/// chosen in Settings. Kept in one place so the providers cannot drift apart on any of them.
 /// </summary>
 internal static class VpnAdapter
 {
@@ -74,21 +75,39 @@ internal static class VpnAdapter
     }
 
     /// <summary>
+    /// The first IPv4 unicast address of the adapter named <paramref name="adapterName"/>, or
+    /// <see langword="null"/> if it is not up or has none. Re-enumerates on every call, like
+    /// <see cref="IsUp"/>, because the VPN hands the adapter a new address on each reconnect.
+    /// </summary>
+    internal static IPAddress? GetIPv4Address(string adapterName)
+    {
+        try
+        {
+            return GetActiveInterfaces()
+                .FirstOrDefault(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase))?
+                .GetIPProperties().UnicastAddresses
+                .Select(a => a.Address)
+                .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+        }
+        catch (NetworkInformationException ex)
+        {
+            LogManager.Instance.LogDebug($"VpnAdapter.GetIPv4Address: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The recovery target for an adapter: the provider token when the adapter belongs to a known
     /// provider whose service is installed (so that service is restarted), otherwise the adapter name
     /// itself (so it is cycled).
     /// </summary>
-    internal static string GetRecoveryTarget(string adapterName) =>
-        FindRestartableProviderToken(adapterName) ?? adapterName;
-
-    /// <summary>
-    /// The recovery action matching <see cref="GetRecoveryTarget"/>: a service restart for an installed
-    /// known provider's adapter, an adapter cycle for any other.
-    /// </summary>
-    internal static string GetRecoveryAction(string adapterName) =>
-        FindRestartableProviderToken(adapterName) is not null
-            ? HelperProtocol.ActionRestart
-            : HelperProtocol.ActionCycleAdapter;
+    /// <remarks>The action that goes with it is a service restart for an installed known provider's
+    /// adapter and an adapter cycle for any other. Both come from one lookup, which enumerates the
+    /// Windows services, so a caller needing both reads them together rather than looking up twice.</remarks>
+    internal static (string Target, string Action) GetRecovery(string adapterName) =>
+        FindRestartableProviderToken(adapterName) is { } token
+            ? (token, HelperProtocol.ActionRestart)
+            : (adapterName, HelperProtocol.ActionCycleAdapter);
 
     // The adapter name alone is not enough: a provider's WireGuard config run in WireGuard's own app is
     // often named after the provider ("ProtonVPN-NL-12") with that provider's app not installed, and a

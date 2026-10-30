@@ -81,7 +81,14 @@ internal static class TmdbCacheManager
         ConcurrentDictionary<string, Lazy<Task<(T? Info, bool IsConfident)>>> inFlight,
         Action markDirty) where T : class
     {
-        if (cache.TryGetValue(cacheKey, out var cached)) return (cached.Info, cached.IsConfident);
+        // The TTL is applied here as well as at load: the load runs once per session, so without this an
+        // app left running for weeks would keep using entries far past it. An expired one is dropped and
+        // looked up again, exactly as if it had expired before the load.
+        if (cache.TryGetValue(cacheKey, out var cached))
+        {
+            if (cached.CachedAt >= DateTime.UtcNow.AddDays(-TtlDays)) return (cached.Info, cached.IsConfident);
+            cache.TryRemove(new KeyValuePair<string, (T? Info, bool IsConfident, DateTime CachedAt)>(cacheKey, cached));
+        }
         // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
         var lazy = inFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(T? Info, bool IsConfident)>>(compute));
         try

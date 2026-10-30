@@ -44,14 +44,7 @@ internal sealed class HelperLogger(string logFilePath, bool debugMode, Action<Ac
         // and cannot reach the shared log file.
         if (level == LogLevel.Debug && !debugMode) return;
 
-        string label = level switch
-        {
-            LogLevel.Warn => LoggingConstants.LevelWarnLabel,
-            LogLevel.Error => LoggingConstants.LevelErrorLabel,
-            LogLevel.Debug => LoggingConstants.LevelDebugLabel,
-            _ => LoggingConstants.LevelInfoLabel,
-        };
-        if (!WriteLog(message, label)) return;
+        if (!WriteLog(message, LoggingConstants.LabelFor(level))) return;
         if (level == LogLevel.Warn) WarnCount++;
         else if (level == LogLevel.Error) ErrorCount++;
     }

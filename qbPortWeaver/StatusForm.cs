@@ -61,6 +61,18 @@ public partial class StatusForm : Form
         InitializeComponent();
         Text = $"{AppIdentity.AppName} | Status";
         AttachStatsContextMenu();
+        ScaleHistoryColumns();
+    }
+
+    // ListView column widths are not scaled by AutoScaleMode, so at 125% the time and port were cut off
+    // and at 150% the columns left a blank strip. Scaled here by the same factor as the rest of the form
+    // (the current font's width against the designer baseline of 7).
+    private void ScaleHistoryColumns()
+    {
+        float scale = CurrentAutoScaleDimensions.Width / 7f;
+        colHistoryTime.Width = (int)Math.Round(colHistoryTime.Width * scale);
+        colHistoryPort.Width = (int)Math.Round(colHistoryPort.Width * scale);
+        colHistoryEvent.Width = EventColumnMinWidth;
     }
 
     // The Statistics group's Clear menu also has to be attached to each child label:
@@ -76,9 +88,10 @@ public partial class StatusForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this, scroll: true); // fixed dialog: scrolls rather than shrinks
         RefreshStatus();
         _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _clockTimer.Tick += ClockTimer_Tick;
+        _clockTimer.Tick += clockTimer_Tick;
         _clockTimer.Start();
     }
 
@@ -94,7 +107,7 @@ public partial class StatusForm : Form
     // sync "ago" suffix, the Monitoring since elapsed duration, and the Reachable age. The remaining
     // values change only when a cycle completes, so they are left untouched here. Monitoring since
     // needs no snapshot, so it advances even before the first cycle has produced one.
-    private void ClockTimer_Tick(object? sender, EventArgs e)
+    private void clockTimer_Tick(object? sender, EventArgs e)
     {
         if (IsDisposed) return;
         PopulateMonitoringSince();
@@ -175,15 +188,16 @@ public partial class StatusForm : Form
         }
         lvHistory.EndUpdate();
         // Size the Event column to its longest entry so long events (recovery entries, cause
-        // annotations) can be read by scrolling horizontally, but never narrower than the
-        // designer width so short content still fills the list without a stray blank area.
+        // annotations) can be read by scrolling horizontally, but never narrower than the room the
+        // list has left beside Time and Port, so short content still fills it without a stray blank area.
         colHistoryEvent.AutoResize(ColumnHeaderAutoResizeStyle.ColumnContent);
         if (colHistoryEvent.Width < EventColumnMinWidth)
             colHistoryEvent.Width = EventColumnMinWidth;
     }
 
-    // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
-    private const int EventColumnMinWidth = 350;
+    // The Event column's least width: what is left of the list beside the Time and Port columns, so short
+    // content still fills it at any scaling.
+    private int EventColumnMinWidth => lvHistory.ClientSize.Width - colHistoryTime.Width - colHistoryPort.Width;
 
     // Fills the Statistics group: the currently managed port (from the live snapshot), today's
     // change count (from the persisted port history), and the in-memory session counters. Refreshed
@@ -331,8 +345,12 @@ public partial class StatusForm : Form
         // untruncated text. The part that gets cut is the countdown at the end of the longest value,
         // which is the half a user is reading the row for. Only on a change, as SetLastSyncToolTip
         // does: this runs on the one-second tick, and re-setting it restarts a tooltip being read.
-        if (toolTip.GetToolTip(lblAutoRecoveryValue) != text)
-            toolTip.SetToolTip(lblAutoRecoveryValue, text);
+        // An exit-address mismatch row is kept short to fit, so its tooltip adds the addresses and the advice.
+        string tip = s.VpnExitAddressMismatch && text == DescribeExitMismatchRow(s)
+            ? text + Environment.NewLine + DescribeExitMismatch(s)
+            : text;
+        if (toolTip.GetToolTip(lblAutoRecoveryValue) != tip)
+            toolTip.SetToolTip(lblAutoRecoveryValue, tip);
     }
 
     // One phrase for "nothing is holding recovery back any more", reached from three places: either
@@ -345,7 +363,7 @@ public partial class StatusForm : Form
     private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
     // No countdown, unlike the two holds: this state ends on a successful port read rather than at a
     // deadline. Says what stopped it and what starts it again, so the row is not simply a dead end.
-    private const string RecoverySuspendedText = "Suspended - restarts did not restore the port, resumes when one is found";
+    private const string RecoverySuspendedText = "Suspended - restarts did not help, resumes when a port is found";
 
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the
@@ -369,13 +387,10 @@ public partial class StatusForm : Form
         // The failed-cycle trigger's own states, reported only while that trigger is on - with it off
         // its counters keep whatever value they last held, and none of them can lead to a recovery.
         //
-        // Failed-cycle states take precedence, and the reason is a judgement call rather than an
-        // impossibility - do not reorder these on the assumption that the two cannot coexist. They
-        // can: PortSyncService resets _confirmedClosedCount only when the port verifies open, when
-        // the trigger fires, or when it is switched off, never when a cycle fails. So a closed-check
-        // count survives into a failure streak and sits hidden behind it. That is the right outcome,
-        // because a port cannot be verified at all while the VPN is down: the streak is the live
-        // signal and the closed count is stale history.
+        // Failed-cycle states take precedence. A failed cycle restarts the closed-port sequence
+        // (PortSyncService.RestartClosedPortSequence), so the two rarely coexist, but keep the order
+        // rather than rely on that: a port cannot be verified at all while the VPN is down, so the
+        // streak is the live signal and any closed count is stale history.
         if (s.RecoveryEnabled && DescribeFailedCycleRecovery(s) is string failedCycle) return (failedCycle, true);
 
         // Falls through to the port-closed trigger, which is why the block above returns only for its
@@ -420,6 +435,15 @@ public partial class StatusForm : Form
         return null;
     }
 
+    // The Auto-recovery row's text for an exit-address mismatch. Short enough to fit the value label: the
+    // addresses and the advice go in the row's tooltip (DescribeExitMismatch), not behind its ellipsis.
+    private static string DescribeExitMismatchRow(StatusSnapshot s)
+    {
+        if (IsExitMismatchBehindAnotherNat(s)) return "Held - the gateway is behind another NAT";
+        if (!s.VpnExitReconnectGaveUp) return $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax})";
+        return $"Held - no matching exit address after {s.VpnExitReconnectsMax} attempts";
+    }
+
     // What the port-closed trigger is doing, or null when it is off or idle. Counted in confirmed
     // closed checks rather than cycles, matching how the log reports the same progress.
     private static string? DescribePortClosedRecovery(StatusSnapshot s)
@@ -428,15 +452,26 @@ public partial class StatusForm : Form
         // the same version-guard case the top of DescribeAutoRecovery handles for the other trigger.
         if (!s.PortClosedRecoveryEnabled || s.PortClosedRecoveryTriggerChecks == 0) return null;
 
+        // Ahead of the disarmed state, as in the log's closed-port suffix: the mismatch is what the
+        // user can act on, and while it holds the closed-check count is not advancing.
+        if (s.VpnExitAddressMismatch) return DescribeExitMismatchRow(s);
+
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
-        // open. Worth its own state precisely because nothing else on the panel shows it: the port
+        // open or the VPN provider or adapter changes. Worth its own state precisely because nothing else on the panel shows it: the port
         // stays closed, the Reachable row keeps saying so, and without this the row would read "Idle"
         // while the trigger for that exact condition is spent.
-        // "the next scheduled check" rather than "the port to verify open": only the sync cycle's own
-        // verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
+        // "the next scheduled check" rather than "the port to verify open": of the checks, only the sync
+        // cycle's own verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
         // check that touches no sync state, so wording this as something the user can go and do left
         // them clicking Test Port, being told the port is open, and seeing this line unchanged.
         if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the next scheduled check";
+
+        // The count has reached the threshold but a time hold keeps the trigger back. Without this the row
+        // would read "4 of 3 closed checks", a counter past its target, as the failed-cycle side avoids.
+        if (s.PortClosedRecoveryHeldUntil is DateTimeOffset until)
+            return DescribeCountdown(until) is string when
+                ? $"Holding - too soon to restart, retry in {when}"
+                : "Will trigger on the next closed check";
 
         if (s.PortClosedRecoveryChecks > 0)
         {
@@ -535,6 +570,32 @@ public partial class StatusForm : Form
             }
         }
         RenderReachable();
+
+        // The cause of an unreachable port, when the exit-address check found it - on a tooltip, so the row
+        // keeps its width at any DPI. Set whether or not port-closed recovery is on: the Auto-recovery
+        // row only reports it while that trigger is enabled.
+        string? cause = s.VpnExitAddressMismatch ? DescribeExitMismatch(s) : null;
+        if (toolTip.GetToolTip(lblReachableValue) != (cause ?? string.Empty))
+            toolTip.SetToolTip(lblReachableValue, cause);
+    }
+
+    // Same split as VpnExitAddress.DescribeMismatch: a private forward address is the user's own router
+    // behind a second NAT, where switching VPN servers is not the fix and no reconnect is made.
+    private static bool IsExitMismatchBehindAnotherNat(StatusSnapshot s) =>
+        System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward) && VpnExitAddress.IsBehindAnotherNat(forward);
+
+    // The full explanation of an exit-address mismatch, for the Reachable tooltip and the Auto-recovery
+    // row's tooltip - one text, so the two cannot disagree. The advice follows the state: once the app has
+    // given up reconnecting, suggesting a reconnect would contradict the row beside it.
+    private static string DescribeExitMismatch(StatusSnapshot s)
+    {
+        if (IsExitMismatchBehindAnotherNat(s))
+            return $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
+                   $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet.";
+        string clause = VpnExitAddress.DescribeAdvice(s.VpnProtonOverOpenVpn, s.VpnExitReconnectGaveUp);
+        string advice = string.Concat(char.ToUpperInvariant(clause[0]).ToString(), clause.AsSpan(1), ".");
+        return $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
+               $"{s.VpnExitAddress}, so they cannot reach the port. {advice}";
     }
 
     // Paints the Reachable label from the remembered result plus a live "ago" age. Shared by the

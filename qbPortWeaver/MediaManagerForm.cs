@@ -17,13 +17,18 @@ public partial class MediaManagerForm : Form
     private CancellationTokenSource? _operationCts;
     private CancellationTokenSource? _thumbnailCts;
     private readonly Dictionary<string, Image> _posterCache = new(StringComparer.OrdinalIgnoreCase);
-    private ToolStripMenuItem? _mnuPaste;
+    private ToolStripMenuItem? _ctxPaste;
     private bool _allIncluded = true;
     private bool _isBusy;
+    // Set by OK so the settings are saved once the close goes ahead, not before the busy prompt is answered.
+    private bool _saveOnClose;
     private bool _showOnlyReviewNeeded;
+    // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
+    // not reported as the import being cancelled.
+    private bool _importApplied;
     // Controls disabled while an async operation is running. After the operation, SetBusy(false)
-    // re-enables _busyControls and each handler's finally calls UpdateScanStatus() which sets
-    // btnImportNow.Enabled appropriately based on the current grid state.
+    // re-enables _busyControls, and each handler then sets btnImportNow.Enabled for the grid it leaves,
+    // through UpdateScanStatus() or, for Clear Cache, which empties the grid, directly.
     private Control[] _busyControls;
 
     // Row confidence colors - resolved once in OnLoad for the active theme
@@ -50,6 +55,7 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         _colorUncertain = ThemeColors.LogWarning;
         _colorUnmatched = ThemeColors.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
@@ -68,7 +74,7 @@ public partial class MediaManagerForm : Form
         toolTip.SetToolTip(chkDryRun, "When checked, the automatic sync cycle will only log what it would import without touching any files");
         toolTip.SetToolTip(chkCreateFolders, "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
         toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
-        toolTip.SetToolTip(cboImportMode, "Hardlink: links without copying (same volume required). Copy: duplicates the file. Move: relocates the file.");
+        toolTip.SetToolTip(cboImportMode, "Hardlink: links without copying (copies instead across volumes). Copy: duplicates the file. Move: relocates the file.");
         toolTip.SetToolTip(txtMoviesLibraryPath, "Target library folder for imported movies");
         toolTip.SetToolTip(btnBrowseMoviesLibrary, "Browse for the movies library folder");
         toolTip.SetToolTip(txtTvShowsLibraryPath, "Target library folder for imported TV shows");
@@ -96,10 +102,14 @@ public partial class MediaManagerForm : Form
 
             if (!result)
             {
+                // Staying open: a later Cancel must leave the settings as they were.
+                _saveOnClose = false;
                 e.Cancel = true;
                 return;
             }
         }
+        if (_saveOnClose)
+            SaveSettings();
         base.OnFormClosing(e);
     }
 
@@ -133,7 +143,7 @@ public partial class MediaManagerForm : Form
 
     private void btnOK_Click(object? sender, EventArgs e)
     {
-        SaveSettings();
+        _saveOnClose = true;
         Close();
     }
 
@@ -273,6 +283,10 @@ public partial class MediaManagerForm : Form
 
         dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
         dgvResults_SelectionChanged(dgvResults, EventArgs.Empty); // refresh detail panel for the selected row
+        // Ahead of the verified count, which would send the user to edit names that were never looked up.
+        // The log may hold only Debug lines for it, when an earlier run already raised the warning.
+        if (tmdb.WasUnavailable)
+            return "TMDB could not be reached or rejected the API key; some rows were not re-matched.";
         int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
                      + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
         return verified == total
@@ -368,10 +382,17 @@ public partial class MediaManagerForm : Form
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (TmdbClient.TmdbUnavailableException ex)
+        {
+            // TMDB rejected the key, or failed to answer twice running: the client now fails
+            // the remaining rows at once, so they are reported once, as the import's lookups are.
+            TmdbClient.ReportUnavailable($"Re-match {mediaLabel} '{title}'", ex);
+            return (null, false);
+        }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            // A real cancel propagates above; a timeout or an unreadable reply is one failed lookup, as in
-            // TmdbClient.LookupAsync, so the remaining rows are still re-matched.
+            // A real cancel propagates above; a single timeout or an unreadable reply is one failed lookup,
+            // as in TmdbClient.LookupAsync, so the remaining rows are still re-matched.
             LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return (null, false);
         }
@@ -484,6 +505,12 @@ public partial class MediaManagerForm : Form
         if (result is null) return LibraryUnavailableStatus;
 
         PopulateGrid(result.Proposals);
+        // Ahead of the grid summary, which would call the skipped rows titles with "no TMDB match" and send
+        // the user to edit names that were never actually looked up.
+        if (result.TmdbUnavailable)
+            return result.UnreadableSourceFolders.Length > 0
+                ? "Some source folders could not be read, and TMDB was unavailable. See the log."
+                : "TMDB could not be reached or rejected the API key; some files were not looked up.";
         return UnreadableSourcesStatus(result, sourceFolders.Length);
     }
 
@@ -524,7 +551,8 @@ public partial class MediaManagerForm : Form
             message,
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,
-            icon);
+            icon,
+            dismissIsDefault: importMode == ImportMode.Move); // No by default where the source is removed, as ConfirmDestructive
 
         if (confirm != DialogResult.Yes) return;
 
@@ -544,7 +572,7 @@ public partial class MediaManagerForm : Form
         }
         catch (OperationCanceledException)
         {
-            if (!IsDisposed) completionStatus = "Import cancelled.";
+            if (!IsDisposed) completionStatus = _importApplied ? "Import finished; re-scan cancelled." : "Import cancelled.";
         }
         catch (Exception ex)
         {
@@ -563,10 +591,12 @@ public partial class MediaManagerForm : Form
         }
     }
 
-    // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-    // Returns the completion message, or null when the form was closed meanwhile.
+    // Applies proposals, re-scans to refresh the grid, then optionally cleans up empty folders - only those
+    // the re-scan could read, and not at all when it could not read the library. Returns the completion
+    // message, or null when the form was closed meanwhile.
     private async Task<string?> RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
+        _importApplied = false;
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
 
         var progress = new Progress<(int Current, int Total, string FileName)>(p =>
@@ -581,24 +611,11 @@ public partial class MediaManagerForm : Form
             lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
         });
         await MediaManagerService.ApplyProposalsAsync(toApply, importMode, new(progress, CreateWaitProgress("Importing…")), cancellationToken);
+        _importApplied = true;
 
         if (IsDisposed) return null;
 
         var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
-        if (chkDeleteEmptyFolders.Checked)
-        {
-            lblScanStatus.Text = "Cleaning up empty folders…";
-            await Task.Run(() =>
-            {
-                foreach (var folder in sourceFolders)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
-                }
-            }, cancellationToken);
-        }
-
-        if (IsDisposed) return null;
 
         lblScanStatus.Text = "Re-scanning…";
         BeginProgress();
@@ -607,6 +624,20 @@ public partial class MediaManagerForm : Form
             txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), new(CreateScanProgress("Re-scanning…"), CreateWaitProgress("Re-scanning…")), cancellationToken);
 
         if (IsDisposed) return null;
+
+        // Not when the re-scan could not read the library: which folders it could read is then unknown.
+        if (chkDeleteEmptyFolders.Checked && remaining is not null)
+        {
+            lblScanStatus.Text = "Cleaning up empty folders…";
+            // After the re-scan, and only over the folders it could read, as the sync-cycle import does: an
+            // offline folder has nothing to clean and would cost another existence check against an
+            // unreachable host. Through the media gate like the import before it, so a sync-cycle import
+            // cannot run on the same folders at the same time.
+            string[] readFolders = [.. sourceFolders.Except(remaining.UnreadableSourceFolders, StringComparer.OrdinalIgnoreCase)];
+            await MediaManagerService.CleanupSourceFoldersAsync(readFolders, sourceFolders, [txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim()],
+                CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
+            if (IsDisposed) return null;
+        }
 
         if (remaining is null)
         {
@@ -627,7 +658,7 @@ public partial class MediaManagerForm : Form
         // A source folder the re-scan could not read hides its files, which would otherwise count as
         // imported. Only the folders that held a file sent to import matter: an offline folder the import
         // never touched says nothing about this result, and must not hide the failure count below.
-        int unconfirmed = remaining.UnreadableSourceFolders.Count(folder => toApply.Any(t => IsUnderFolder(t.OriginalPath, folder)));
+        int unconfirmed = remaining.UnreadableSourceFolders.Count(folder => toApply.Any(t => MediaImporter.IsUnderFolder(t.OriginalPath, folder)));
         if (unconfirmed > 0)
             return $"Import finished, but {TextFormat.Pluralize(unconfirmed, "source folder")} could not be read to confirm it - see the log.";
 
@@ -635,15 +666,15 @@ public partial class MediaManagerForm : Form
         // the re-scan, but nothing was attempted for it.
         var applied = new HashSet<string>(toApply.Select(t => t.OriginalPath), StringComparer.OrdinalIgnoreCase);
         int failed = remaining.Proposals.Count(r => applied.Contains(r.OriginalPath));
+        // The failure count stays right, since imported files drop out before any lookup, but the rows left
+        // unchecked would otherwise show as "no TMDB match" when they were never looked up.
+        if (remaining.TmdbUnavailable)
+            return failed == 0
+                ? "Done - all selected files imported; TMDB was unavailable for the rest."
+                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported; TMDB was unavailable for the rest.";
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";
-    }
-
-    private static bool IsUnderFolder(string path, string folder)
-    {
-        string root = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
-        return path.StartsWith(root, StringComparison.OrdinalIgnoreCase);
     }
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
@@ -821,7 +852,7 @@ public partial class MediaManagerForm : Form
 
         if (!p.IsConfident)
         {
-            lblTmdbConfidence.Text = "Uncertain match - review recommended";
+            lblTmdbConfidence.Text = "Uncertain match - review it";
             lblTmdbConfidence.ForeColor = _colorUncertain;
         }
         else
@@ -845,41 +876,41 @@ public partial class MediaManagerForm : Form
 
     private void SetupGridContextMenu()
     {
-        var mnuCopy = new ToolStripMenuItem("Copy");
-        _mnuPaste = new ToolStripMenuItem("Paste");
-        var mnuSelectAll = new ToolStripMenuItem("Select All");
+        var ctxCopy = new ToolStripMenuItem("Copy");
+        _ctxPaste = new ToolStripMenuItem("Paste");
+        var ctxSelectAll = new ToolStripMenuItem("Select All");
 
-        mnuCopy.ShortcutKeyDisplayString = "Ctrl+C";
-        _mnuPaste.ShortcutKeyDisplayString = "Ctrl+V";
-        mnuSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
+        ctxCopy.ShortcutKeyDisplayString = "Ctrl+C";
+        _ctxPaste.ShortcutKeyDisplayString = "Ctrl+V";
+        ctxSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
 
-        mnuCopy.Click += gridContextCopy_Click;
-        _mnuPaste.Click += gridContextPaste_Click;
-        mnuSelectAll.Click += gridContextSelectAll_Click;
+        ctxCopy.Click += ctxCopy_Click;
+        _ctxPaste.Click += ctxPaste_Click;
+        ctxSelectAll.Click += ctxSelectAll_Click;
 
-        var menu = new ContextMenuStrip(components);
-        menu.Items.Add(mnuCopy);
-        menu.Items.Add(_mnuPaste);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(mnuSelectAll);
+        var ctxResults = new ContextMenuStrip(components);
+        ctxResults.Items.Add(ctxCopy);
+        ctxResults.Items.Add(_ctxPaste);
+        ctxResults.Items.Add(new ToolStripSeparator());
+        ctxResults.Items.Add(ctxSelectAll);
 
-        dgvResults.MouseDown += gridResults_MouseDown;
-        menu.Opening += gridContextMenu_Opening;
-        dgvResults.ContextMenuStrip = menu;
+        dgvResults.MouseDown += dgvResults_MouseDown;
+        ctxResults.Opening += ctxResults_Opening;
+        dgvResults.ContextMenuStrip = ctxResults;
     }
 
-    private void gridContextCopy_Click(object? sender, EventArgs e)
+    private void ctxCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
             UiHelpers.SetClipboardTextSafely(v);
     }
 
-    private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+    private void ctxPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
 
-    private void gridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+    private void ctxSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
 
     // Right-click first moves focus to the cell under the cursor, then the menu opens
-    private void gridResults_MouseDown(object? sender, MouseEventArgs e)
+    private void dgvResults_MouseDown(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Right) return;
         var hit = dgvResults.HitTest(e.X, e.Y);
@@ -887,12 +918,12 @@ public partial class MediaManagerForm : Form
             dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
     }
 
-    private void gridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void ctxResults_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
                         && !dgvResults.CurrentCell.ReadOnly
                         && UiHelpers.ClipboardHasText();
-        _mnuPaste!.Enabled = canPaste;
+        _ctxPaste!.Enabled = canPaste;
     }
 
     private void PasteToCurrentCell()
@@ -910,7 +941,7 @@ public partial class MediaManagerForm : Form
         switch (e.KeyCode)
         {
             case Keys.C:
-                gridContextCopy_Click(sender, e);
+                ctxCopy_Click(sender, e);
                 e.Handled = true;
                 break;
             case Keys.V:
@@ -1080,10 +1111,11 @@ public partial class MediaManagerForm : Form
         string name = FileNameParser.SanitizeFileName(Path.GetFileName(raw));
         // An import never changes the container, so the extension always comes from the source file:
         // a name typed without one would otherwise import as a file nothing opens, and a dotted title
-        // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down.
+        // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down. A name typed
+        // with another video extension has it replaced, not kept beside the source's (".mp4.mkv").
         string sourceExtension = row.Tag is RowData rd ? Path.GetExtension(rd.Proposal.OriginalPath) : string.Empty;
         if (sourceExtension.Length > 0 && !name.EndsWith(sourceExtension, StringComparison.OrdinalIgnoreCase))
-            name += sourceExtension;
+            name = FileNameParser.IsVideoFile(name) ? Path.ChangeExtension(name, sourceExtension) : name + sourceExtension;
         return name;
     }
 

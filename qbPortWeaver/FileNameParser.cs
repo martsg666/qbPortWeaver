@@ -189,8 +189,9 @@ public static partial class FileNameParser
             return null;
         int? endEpisode = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out int ep2) ? ep2 : null;
 
-        // Season or episode 0 is not a valid episode (e.g. S00E00 matches the regex but is not importable)
-        if (season == 0 || episode == 0)
+        // Episode 0 is not a valid episode (S00E00 or S01E00 match the regex but are not importable). Season 0
+        // is: it is where Plex and TMDB put a show's specials, and the episode path formats it "Season 00".
+        if (episode == 0)
             return null;
 
         return new TvShowEpisodeInfo(
@@ -476,12 +477,14 @@ public static partial class FileNameParser
     [GeneratedRegex(@"^0*(\d{1,3})(?:[\s\-_.]|$)")]
     private static partial Regex EpisodePrefixRegex();
 
-    /// <summary>Returns the season number when <paramref name="folderName"/> matches a season indicator pattern (e.g. "Season 1", "saison 01", "S01"), or <see langword="null"/> otherwise.</summary>
+    /// <summary>Returns the season number when <paramref name="folderName"/> matches a season indicator pattern (e.g. "Season 1", "saison 01", "S01"), or <see langword="null"/> otherwise.
+    /// Season 0 ("Season 00", where Plex and TMDB put a show's specials) is returned as 0, not rejected; a
+    /// folder named "Specials" is not a season indicator and is not matched.</summary>
     public static int? ParseSeasonFromFolder(string folderName)
     {
         if (string.IsNullOrWhiteSpace(folderName)) return null;
         var match = SeasonFolderRegex().Match(folderName.Trim());
-        return match.Success && int.TryParse(match.Groups[1].Value, out int n) && n > 0 ? n : null;
+        return match.Success && int.TryParse(match.Groups[1].Value, out int n) && n >= 0 ? n : null;
     }
 
     /// <summary>Returns the episode number from a 1-3 digit prefix at the start of <paramref name="fileName"/> (e.g. "01-Title.mkv" -> 1), or <see langword="null"/> if no prefix is present.</summary>

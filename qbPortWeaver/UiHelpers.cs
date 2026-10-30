@@ -4,11 +4,33 @@ using System.Runtime.InteropServices;
 
 namespace qbPortWeaver;
 
-/// <summary>Shared WinForms helpers: owner-drawn glyphs, the search-toolbar layout used by the log and help
-/// viewers, foreground activation for a tray app with no owner window, and clipboard access that
-/// tolerates another process holding the clipboard open.</summary>
+/// <summary>Shared WinForms helpers: fitting a window to the screen's working area, owner-drawn glyphs, the
+/// search-toolbar layout used by the log and help viewers, URL validation and opening, foreground
+/// activation for a tray app with no owner window, and clipboard access that tolerates another process
+/// holding the clipboard open.</summary>
 public static class UiHelpers
 {
+    /// <summary>
+    /// Keeps a window no taller than the working area of the screen it opens on. At 150% on a 1080p
+    /// display the designer heights scale past it, which put the bottom button rows behind the taskbar.
+    /// Called from OnLoad. <paramref name="scroll"/> is for a fixed-size dialog, which cannot lay out
+    /// smaller and scrolls instead: it is widened by the vertical scroll bar so no horizontal one appears.
+    /// </summary>
+    public static void FitToWorkingArea(Form form, bool scroll = false)
+    {
+        Rectangle area = Screen.FromControl(form).WorkingArea;
+        if (form.Height <= area.Height) return;
+        if (form.MinimumSize.Height > area.Height)
+            form.MinimumSize = new Size(form.MinimumSize.Width, area.Height);
+        if (scroll)
+        {
+            form.AutoScroll = true;
+            form.Width += SystemInformation.VerticalScrollBarWidth;
+        }
+        form.Height = area.Height;
+        if (form.Bottom > area.Bottom || form.Top < area.Top) form.Top = area.Top;
+    }
+
     /// <summary>
     /// Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor.
     /// Drawn instead of a font glyph so it is always centered and its size/weight are exact.

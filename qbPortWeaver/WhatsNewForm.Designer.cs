@@ -66,7 +66,7 @@ partial class WhatsNewForm
         rtbFeatures.ScrollBars  = RichTextBoxScrollBars.Vertical;
         rtbFeatures.Size        = new Size(360, 280);
         rtbFeatures.TabIndex    = 0;
-        rtbFeatures.TabStop     = false;
+        rtbFeatures.TabStop     = true; // the notes are long: reachable by Tab so the keyboard can scroll them
         rtbFeatures.Text        = "";
 
         // ── Buttons ───────────────────────────────────────────────────

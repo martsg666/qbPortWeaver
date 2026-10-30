@@ -21,6 +21,10 @@ STATE_IDLE = "idle"
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
+# Nicotine+ was disconnected by the user, or has not connected since the plugin started, so nothing
+# listens on the port: a check could only say closed, and qbPortWeaver would count that toward a VPN
+# restart that cannot bring the client back.
+STATE_OFFLINE = "offline"
 
 # Which mechanism produced the verdict. Both ultimately consult the same Soulseek service, but they
 # fail differently - the native checker can go silent, the web path can time out or return an
@@ -44,8 +48,9 @@ STALE_AFTER = 90.0
 START_TIMEOUT = 20.0
 
 # The ceiling on how long a single request may block. qbPortWeaver's HTTP client times out
-# at 10 s, and a timeout there is indistinguishable from a wedged client, so always return
-# a real response before then and let the caller poll.
+# at 10 s, and a timeout there is indistinguishable from a wedged client, so return a real
+# response before then and let the caller poll. For the web fallback this is urlopen's timeout,
+# which bounds each socket operation but not the name lookup, so it is a target, not a guarantee.
 MAX_WAIT_SECONDS = 9.0
 
 
@@ -96,9 +101,24 @@ class PortTest:
 
     # ---------------------------------------------------------- handler threads
 
-    def request(self, port, wait_seconds):
-        """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
-        wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
+    def request(self, port, wait_seconds, started=None):
+        """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict.
+
+        ``wait_seconds`` is counted from ``started`` (a ``time.monotonic()`` reading; now when
+        omitted), so the main-thread reads made before the wait come out of it rather than add to
+        it: the caller's HTTP timeout is sized to the wait it asked for.
+        """
+        if started is None:
+            started = time.monotonic()
+
+        # Read on the main thread like every other core read from a handler thread; the default
+        # timeout is the proxy's read timeout.
+        if self._proxy.call(self._core_io.connection_state) == "disconnected":
+            return {"ok": True, "state": STATE_OFFLINE, "port": port,
+                    "result": None, "age_ms": 0, "source": None}
+
+        wait_seconds = min(float(wait_seconds), MAX_WAIT_SECONDS) - (time.monotonic() - started)
+        wait_seconds = max(0.0, wait_seconds)
 
         # Prefer Nicotine+'s native checker when this version exposes it; otherwise query the Soulseek
         # port-test service directly, so reachability still works on releases without the native API.
@@ -229,11 +249,13 @@ def _web_port_check(port, timeout, log):
             body = response.read(65536).decode("utf-8", "replace")
     # Any network or parse failure means "could not determine", never a hard error.
     except Exception as error:  # noqa: BLE001
-        log("web port check failed: %s", (error,))
+        log("Web port check failed: %s", (error,))
         return None
 
     # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.
     match = re.search(r"\b%d/tcp\s+(open|closed)\b" % port, body, re.IGNORECASE)
     if match is None:
+        # Logged, or a service that changed its page would leave every check undetermined with no trace.
+        log("Web port check gave no verdict for port %d (%d characters of reply)", (port, len(body)))
         return None
     return match.group(1).lower() == "open"

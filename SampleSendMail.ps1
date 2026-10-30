@@ -19,7 +19,7 @@ function FailedCycleState($s) {
     # successfully. A missing key is an older app version, where the cap did not exist, so absent is
     # correctly falsy here. Both holds are absolute instants, not remaining durations.
     if ($null -ne $s.recoveryHoldUntil) { return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)" }
-    if ($s.recoverySuspended) { return 'Suspended - restarts did not restore the port, resumes when one is found' }
+    if ($s.recoverySuspended) { return 'Suspended - restarts did not help, resumes when a port is found' }
     if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
     if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }
     if ($s.recoveryFailedCycles -gt 0) { return "$($s.recoveryFailedCycles) of $($s.recoveryTriggerCycles) failed cycles" }
@@ -28,8 +28,26 @@ function FailedCycleState($s) {
 
 # What the port-closed trigger is doing, or $null when it is idle.
 function PortClosedState($s) {
-    # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
+    # While traffic leaves from a different address than the port is forwarded on, the app reconnects
+    # the VPN for a new exit address, up to vpnExitReconnectsMax times, then holds and asks for a
+    # different server. The closed checks the mismatch explains are not counted.
+    if ($s.vpnExitAddressMismatch) {
+        # Behind another NAT no reconnect is made: none can change the address.
+        # Short, as on the Status panel; the addresses and the advice are in the Address Match row.
+        if (BehindAnotherNat $s.vpnForwardAddress) { return 'Held - the gateway is behind another NAT' }
+        if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax))" }
+        return "Held - no matching exit address after $($s.vpnExitReconnectsMax) attempts"
+    }
+    # One-shot: once it fires it stays disarmed until a scheduled check reports the port open, or the
+    # VPN provider or adapter changes.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
+    # The count has reached the threshold but a time hold keeps the trigger back: the port has not
+    # stayed closed long enough yet, or an exit-address reconnect is still settling. An absolute instant.
+    if ($null -ne $s.portClosedRecoveryHeldUntil) {
+        # Published past its end too, on a cycle that did not reach the trigger: it fires on the next closed check.
+        if ([DateTimeOffset]$s.portClosedRecoveryHeldUntil -le [DateTimeOffset]::Now) { return 'Will trigger on the next closed check' }
+        return "Holding - too soon to restart, retry at $($s.portClosedRecoveryHeldUntil)"
+    }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
     return $null
 }
@@ -42,6 +60,8 @@ function RecoveryState($s) {
     # A threshold of 0 (or a missing key) means no cycle has published one: a status file written by
     # an app version from before these keys existed, or a cycle that failed before reading config.
     if ($null -eq $s.recoveryTriggerCycles -or $s.recoveryTriggerCycles -eq 0) { return 'Not reported by this app version' }
+    # Port sync set to Disabled: nothing runs, whatever the two settings say - as the Status panel shows it.
+    if (-not $s.vpnProvider -or $s.vpnProvider -eq 'Disabled') { return 'Disabled' }
     if (-not $s.recoveryEnabled -and -not $s.portClosedRecoveryEnabled) { return 'Disabled' }
 
     if ($s.recoveryEnabled) {
@@ -59,6 +79,38 @@ function RecoveryState($s) {
 
 function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
+# Whether traffic leaves from the address the port is forwarded on. The app looks this up
+# when a port check reports the port closed or cannot determine it (and on open results while its
+# reconnects are spent), and only for NAT-PMP and ProtonVPN, so
+# "Not checked" is normal while the port is open, for other providers, and for app versions without these keys.
+function AddressMatch($s) {
+    if ($s.vpnExitAddressMismatch) {
+        # A private or carrier-grade NAT forward address is a home router behind a second NAT, where
+        # switching VPN servers is not the fix - the same split the app makes.
+        if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
+        # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard on the same server, hence the protocol advice there.
+        # After the give-up the advice drops the reconnect, as the Status panel's tooltip does.
+        $prefix = "No - traffic leaves from $($s.vpnExitAddress), not from $($s.vpnForwardAddress) where the port is forwarded; "
+        if ($s.vpnExitReconnectGaveUp) {
+            if ($s.vpnProtonOverOpenVpn) { return $prefix + 'switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server' }
+            return $prefix + 'connect the VPN to a different server'
+        }
+        if ($s.vpnProtonOverOpenVpn) { return $prefix + "ProtonVPN's OpenVPN connections often do this, switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
+        return $prefix + 'reconnecting may give a different exit address, or connect to a different server'
+    }
+    if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
+    return 'Not checked'
+}
+function OrNotChecked($val) { if ($val) { $val } else { 'Not checked' } }
+function BehindAnotherNat($ip) {
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse([string]$ip, [ref]$parsed)) { return $false }
+    $b = $parsed.GetAddressBytes()
+    if ($b.Length -ne 4) { return $false }
+    return ($b[0] -eq 10) -or ($b[0] -eq 172 -and $b[1] -ge 16 -and $b[1] -le 31) -or ($b[0] -eq 192 -and $b[1] -eq 168) -or
+           ($b[0] -eq 100 -and $b[1] -ge 64 -and $b[1] -le 127) -or ($b[0] -eq 169 -and $b[1] -eq 254)
+}
+
 $Body = @"
 <table style='font-family:monospace;font-size:13px;border-collapse:collapse;'>
 $(Section '[App]')
@@ -70,6 +122,9 @@ $(Section '[VPN]')
 $(Row 'Provider'  $status.vpnProvider)
 $(Row 'Connected' $status.vpnConnected)
 $(Row 'Port'      $status.vpnPort)
+$(Row 'Forward Address' (OrNotChecked $status.vpnForwardAddress))
+$(Row 'Exit Address'    (OrNotChecked $status.vpnExitAddress))
+$(Row 'Address Match'   (AddressMatch $status))
 $(Section '[Client]')
 $(Row 'Name'          $status.client)
 $(Row 'Running'       $status.clientRunning)

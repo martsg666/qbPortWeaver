@@ -8,7 +8,7 @@ namespace qbPortWeaver;
 /// Manager feature is enabled, and the Media Manager window's Scan Now and Import Now.</summary>
 public static class MediaManagerService
 {
-    internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
+    private const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
     // State keys for LogManager.LogStateChange - see there for why these conditions are not logged
     // per cycle. The two configuration gates share one key so switching between them still reports.
@@ -127,7 +127,7 @@ public static class MediaManagerService
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
             return;
         }
-        var (tmdb, classified, total, _) = prep.Value;
+        var (tmdb, classified, total, unreadableSources) = prep.Value;
 
         var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -138,14 +138,18 @@ public static class MediaManagerService
         await Task.WhenAll(classified.Select(c =>
             ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken))).ConfigureAwait(false);
 
+        // Only the folders read this run are walked: an offline one has nothing to clean up, and checking it
+        // again would cost another existence check against an unreachable host. Every configured one stays
+        // protected, though: an unread folder nested in a read one is still reached by the outer walk.
+        string[] readSources = [.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)];
         if (deleteEmptyFolders)
-            CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
+            CleanupSourceFolders(readSources, new FolderKeepSet(sourceFolders, [moviesLibraryPath, tvShowsLibraryPath]), dryRun, cancellationToken);
 
         TmdbCacheManager.Save();
-        MediaImporter.SaveSourceCache();
+        MediaImporter.SaveSourceCache(readSources);
         MediaImporter.SaveLibraryCache();
         importSw.Stop();
-        LogManager.Instance.LogMessage($"Import completed: {TextFormat.Pluralize(total, "file")} in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Import completed: {TextFormat.Pluralize(total, "file")} processed in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
     }
 
     /// <summary>
@@ -203,7 +207,7 @@ public static class MediaManagerService
         var proposals = results.SelectMany(r => r).ToList();
 
         TmdbCacheManager.Save();
-        MediaImporter.SaveSourceCache();
+        MediaImporter.SaveSourceCache([.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)]);
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
         LogManager.Instance.LogMessage($"Scan completed: {TextFormat.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
@@ -211,7 +215,7 @@ public static class MediaManagerService
         // offline: the window points the user at the log, so the log has to say it each time.
         if (unreadableSources.Length > 0)
             LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
-        return new MediaScanResult(proposals, unreadableSources);
+        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -282,13 +286,37 @@ public static class MediaManagerService
         LogManager.Instance.LogMessage($"Processed source folder '{folder}': {TextFormat.Pluralize(totalFiles, "file")}", LogLevel.Info, Subsystem.MediaManager);
     }
 
-    // Runs folder cleanup for all configured source folders.
-    private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
+    /// <summary>
+    /// Removes empty folders left in the given source folders, as one media operation: it waits for any
+    /// other (the sync cycle's import included) and holds the gate while it runs, so it never deletes a
+    /// folder another operation is moving files out of or listing. For the window's Import Now, which used
+    /// to run this outside the gate. <paramref name="keepSources"/> and <paramref name="libraryFolders"/>
+    /// are the window's values, which may be unsaved; the saved source and library folders are protected as
+    /// well, so a folder the next sync-cycle import relies on is never deleted for an edit not yet saved.
+    /// </summary>
+    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, string[] keepSources, string[] libraryFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() => Task.Run(() =>
+        {
+            var keep = new FolderKeepSet(
+                [.. keepSources, .. GetFolders(RegistrySettingsManager.KeyMediaSourceFolders)],
+                [.. libraryFolders,
+                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaMoviesLibraryPath),
+                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaTvShowsLibraryPath)]);
+            CleanupSourceFolders(sourceFolders, keep, dryRun: false, cancellationToken);
+            return true;
+        }, cancellationToken), waiting, cancellationToken);
+
+    // Runs folder cleanup over the given source folders. A source folder listed inside another is cleaned
+    // as part of the outer one, and is itself never deleted, even when empty: it is configured, which is
+    // why keep holds every configured one, not only those walked. Nor is a library folder placed inside a
+    // source folder, or anything under one: a new, still-empty library folder deleted here would make
+    // every later import fail to read the library.
+    private static void CleanupSourceFolders(string[] sourceFolders, FolderKeepSet keep, bool dryRun, CancellationToken cancellationToken)
     {
-        foreach (var folder in sourceFolders)
+        foreach (var folder in OutermostFolders(sourceFolders))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            try { CleanupEmptyFolders(folder, dryRun); }
+            try { CleanupEmptyFolders(folder, dryRun, keep); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -311,6 +339,23 @@ public static class MediaManagerService
         => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress?.Items, cancellationToken), cancellationToken),
             progress?.Waiting, cancellationToken);
 
+    // Whether the proposal's file is already in the library it targets. A source that cannot be read
+    // (moved away by a Move import since the scan, or locked) answers false, so AddFileToLibrary reports
+    // it the way it reports any other unreadable source.
+    private static bool ImportedSinceScan(MediaProposal proposal)
+    {
+        try
+        {
+            return MediaImporter.IsAlreadyInLibraryUnder(
+                MediaImporter.GetOrComputeSourceFingerprint(new FileInfo(proposal.OriginalPath)), proposal.ProposedPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MediaManagerService.ImportedSinceScan: Could not fingerprint '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}", Subsystem.MediaManager);
+            return false;
+        }
+    }
+
     private static int ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
         IProgress<(int Current, int Total, string FileName)>? progress, CancellationToken cancellationToken)
     {
@@ -328,6 +373,16 @@ public static class MediaManagerService
                 LogLevel.Info, Subsystem.MediaManager);
             try
             {
+                // The gate is free while the user reviews the grid, so a sync-cycle import may have placed
+                // this file since the scan, under its own name: an edited name or an unsaved folder setting
+                // gives a different target, which AddFileToLibrary's same-path check cannot see.
+                if (ImportedSinceScan(proposal))
+                {
+                    LogManager.Instance.LogMessage(
+                        $"Skipped '{Path.GetFileName(proposal.OriginalPath)}' - already in the library (imported since the scan)",
+                        LogLevel.Info, Subsystem.MediaManager);
+                    continue;
+                }
                 // Subtitles follow the video, as on the sync cycle. This is the only chance: once
                 // the video is in the library the cycle skips its source, so a subtitle left behind
                 // here would never be imported. Naming from the proposed path also covers a
@@ -363,7 +418,7 @@ public static class MediaManagerService
     // become empty only because the import moved their last file out this cycle are in the snapshot and
     // will be caught. Folders created or emptied by external processes after the snapshot are not seen
     // until the next cycle. The root folder itself is never deleted.
-    internal static void CleanupEmptyFolders(string rootFolder, bool dryRun)
+    private static void CleanupEmptyFolders(string rootFolder, bool dryRun, FolderKeepSet keep)
     {
         if (!MediaImporter.DirectoryExistsWithSmbRetry(rootFolder)) return;
 
@@ -384,7 +439,8 @@ public static class MediaManagerService
             return;
         }
 
-        int deleted = directories.OrderByDescending(d => d.Length)
+        int deleted = directories.Where(dir => !keep.Protects(dir))
+            .OrderByDescending(d => d.Length)
             .Count(dir => TryCleanupFolder(dir, dryRun));
 
         if (deleted > 0)
@@ -448,8 +504,8 @@ public static class MediaManagerService
         }
     }
 
-    // Loads caches, validates source folders, then runs the library index build and source enumeration
-    // concurrently (both are directory listings on different paths). Fingerprints candidates once the
+    // Loads caches, validates source folders, then runs the library index build (on its own task) and the
+    // source enumeration concurrently (both are directory listings on different paths). Fingerprints candidates once the
     // library index is ready. allowLibraryReuse: true for background sync cycles (reuses index up to
     // FullRebuildIntervalCycles); false for UI-initiated scans (always rebuilds for fresh results).
     // Returns null when the library index could not be built (or was incomplete) so the caller can
@@ -471,6 +527,89 @@ public static class MediaManagerService
 
         var tmdb = new TmdbClient(apiKey);
 
+        // On its own task: BuildLibraryIndexAsync does its walk synchronously before it first yields, so
+        // called directly it would finish before the source listing even started. Started ahead of the
+        // source folders' existence checks too, which against an offline share take seconds each.
+        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+        List<string> unreadableFolders;
+        List<(string Folder, List<FileInfo> Candidates, bool Failed)> enumeration;
+        try
+        {
+            (var validFolders, unreadableFolders) = CheckSourceFolders(sourceFolders);
+            enumeration = await EnumerateSourceFoldersAsync(OutermostFolders(validFolders), cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Never return with the build still running: the caller releases the one-at-a-time media gate
+            // when this returns, and a build outliving it would race the next operation's. The listing's
+            // exception is the one reported; the build's own outcome is not wanted here.
+            await ((Task)libraryTask).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            throw;
+        }
+        // A folder that exists but could not be listed (the share dropped after the check above) is
+        // as unread as one that is missing, and must not reach the window as "All files already imported".
+        unreadableFolders.AddRange(enumeration.Where(e => e.Failed).Select(e => e.Folder));
+        var enumerated = enumeration.Select(e => (e.Folder, e.Candidates)).ToList();
+        bool libraryReady = await libraryTask.ConfigureAwait(false);
+        if (!libraryReady)
+            return null;
+
+        var (classified, lostFolders) = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+        unreadableFolders.AddRange(lostFolders);
+        // A folder listed inside an unreadable one, or the same folder spelled another way, was not read
+        // either: it is walked only as part of that folder (OutermostFolders lists one spelling), so it joins
+        // the unreadable ones, and the cache keeps its entries for the next run.
+        unreadableFolders.AddRange(sourceFolders.Where(f => !unreadableFolders.Contains(f, StringComparer.OrdinalIgnoreCase)
+            && unreadableFolders.Any(u => string.Equals(FolderKey(f), FolderKey(u), StringComparison.OrdinalIgnoreCase)
+                || MediaImporter.IsUnderFolder(FolderKey(f), u))).ToList());
+        int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
+
+        return (tmdb, classified, total, [.. unreadableFolders]);
+    }
+
+    // The folders that are not inside another one in the list. A source folder listed inside another
+    // would otherwise be walked twice: every file in it reported as a duplicate of itself each cycle, and
+    // counted twice against the source cache, so its stale entries were never pruned.
+    // Two spellings of one folder (case, separators, a trailing one) count as one, the first kept, so it is
+    // neither walked twice nor, comparing each against the other, dropped altogether.
+    private static List<string> OutermostFolders(IReadOnlyCollection<string> folders)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var distinct = folders.Where(f => seen.Add(FolderKey(f))).ToList();
+        var outermost = new List<string>(distinct.Count);
+        foreach (var folder in distinct)
+        {
+            string? outer = distinct.FirstOrDefault(other => !ReferenceEquals(other, folder)
+                && MediaImporter.IsUnderFolder(FolderKey(folder), other));
+            if (outer is null) outermost.Add(folder);
+            else LogManager.Instance.LogDebug($"MediaManagerService.OutermostFolders: '{folder}' is inside source folder '{outer}' - scanned with it", Subsystem.MediaManager);
+        }
+        return outermost;
+    }
+
+    // One spelling for comparing folders: full, without a trailing separator.
+    private static string FolderKey(string folder) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+
+    /// <summary>The folders empty-folder cleanup must not delete: every configured source folder, and
+    /// every library folder with all it holds.</summary>
+    private sealed class FolderKeepSet(IEnumerable<string> sourceFolders, IEnumerable<string> libraryFolders)
+    {
+        private readonly HashSet<string> _sources = new(sourceFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey), StringComparer.OrdinalIgnoreCase);
+        private readonly string[] _libraries = [.. libraryFolders.Where(f => !string.IsNullOrWhiteSpace(f)).Select(FolderKey)];
+
+        // dir arrives in the root's own spelling (Directory.GetDirectories), so it is normalised first.
+        internal bool Protects(string dir)
+        {
+            string key = FolderKey(dir);
+            return _sources.Contains(key)
+                || Array.Exists(_libraries, lib => string.Equals(key, lib, StringComparison.OrdinalIgnoreCase) || MediaImporter.IsUnderFolder(key, lib));
+        }
+    }
+
+    // Splits the configured source folders into those that can be reached and those that cannot, warning
+    // once per folder while it stays unreachable.
+    private static (List<string> Valid, List<string> Unreadable) CheckSourceFolders(string[] sourceFolders)
+    {
         var validFolders = new List<string>();
         var unreadableFolders = new List<string>();
         foreach (var f in sourceFolders)
@@ -487,21 +626,7 @@ public static class MediaManagerService
             LogManager.Instance.ClearLogState($"{SourceFolderStateKeyPrefix}{f}");
             validFolders.Add(f);
         }
-
-        var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
-        var enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-        // A folder that exists but could not be listed (the share dropped after the check above) is
-        // as unread as one that is missing, and must not reach the window as "All files already imported".
-        unreadableFolders.AddRange(enumeration.Where(e => e.Failed).Select(e => e.Folder));
-        var enumerated = enumeration.Select(e => (e.Folder, e.Candidates)).ToList();
-        bool libraryReady = await libraryTask.ConfigureAwait(false);
-        if (!libraryReady)
-            return null;
-
-        var classified = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
-        int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
-
-        return (tmdb, classified, total, [.. unreadableFolders]);
+        return (validFolders, unreadableFolders);
     }
 
     // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
@@ -551,7 +676,8 @@ public static class MediaManagerService
     // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
     // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
     // sourceFpToPath is shared across all folders so source duplicates spanning multiple folders are detected.
-    private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>> ClassifySourceFoldersAsync(
+    // Also returns the folders that turned out to be unreachable after they were listed.
+    private static Task<(List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, List<string> Lost)> ClassifySourceFoldersAsync(
         List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
     {
         return Task.Run(() =>
@@ -560,18 +686,26 @@ public static class MediaManagerService
             var classified = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>(enumerated.Count);
             var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 
+            var lost = new List<string>();
             foreach (var e in enumerated)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                try
+                var (items, unreadFiles) = ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken);
+                // A file that could not be read is either one still being written, or a share that dropped
+                // after it was listed - classification waits for the library build, so that window is real.
+                // Any unread file, not all of them: a file whose fingerprint is cached needs no read, so a
+                // folder with history never fails every file. Told apart by asking for the folder itself,
+                // which costs one existence check only when something failed. A dropped share joins the
+                // unreadable folders with nothing classified, so neither the window reports its files as
+                // imported nor the import works on, or prunes the cache of, an unreachable host.
+                if (unreadFiles > 0 && !MediaImporter.DirectoryExistsWithSmbRetry(e.Folder))
                 {
-                    classified.Add((e.Folder, ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Source folder '{e.Folder}' could not be read after it was listed - skipped", LogLevel.Warn, Subsystem.MediaManager);
+                    lost.Add(e.Folder);
                     classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [], FolderTvFiles: [])));
+                    continue;
                 }
+                classified.Add((e.Folder, items));
             }
 
             int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
@@ -583,7 +717,7 @@ public static class MediaManagerService
                 $"Source files classified: {movieTotal + tvShowTotal + folderTvTotal} ({movieTotal} movies, {tvShowTotal + folderTvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
                 LogLevel.Info, Subsystem.MediaManager);
 
-            return classified;
+            return (classified, lost);
         }, cancellationToken);
     }
 
@@ -592,9 +726,11 @@ public static class MediaManagerService
     // Each candidate requires a 128 KB read; reads are bounded by MediaImporter.FingerprintParallelism.
     // fpToPath maps each fingerprint to the first source path that produced it (shared across folders).
     // Files already in the library are silently skipped; additional source copies of the same content are warned.
-    private static (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) ClassifyCandidates(
+    // UnreadFiles: how many candidates could not be read to fingerprint them.
+    private static ((string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items, int UnreadFiles) ClassifyCandidates(
         List<FileInfo> candidates, ConcurrentDictionary<string, string> fpToPath, CancellationToken cancellationToken)
     {
+        int unreadFiles = 0;
         var movieFiles = new ConcurrentBag<string>();
         var tvShowFiles = new ConcurrentBag<string>();
         var folderTvFiles = new ConcurrentBag<FolderClassifiedEpisode>();
@@ -608,6 +744,7 @@ public static class MediaManagerService
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                    Interlocked.Increment(ref unreadFiles);
                     return;
                 }
 
@@ -639,7 +776,7 @@ public static class MediaManagerService
                 }
             });
 
-        return (movieFiles.ToArray(), tvShowFiles.ToArray(), folderTvFiles.ToArray());
+        return ((movieFiles.ToArray(), tvShowFiles.ToArray(), folderTvFiles.ToArray()), unreadFiles);
     }
 
     // Recognises files that live under a season-indicator folder (e.g. "Season 01", "saison 1")
@@ -702,10 +839,16 @@ public static class MediaManagerService
 
         // Check applies in both live and dry-run: skip files already correctly placed so we
         // don't falsely report "Would import" for content already present in the library.
-        if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
+        bool? same = MediaImporter.CompareWithDestination(sourcePath, targetPath);
+        if (same == true)
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
             return true;
+        }
+        if (same is null)
+        {
+            MediaImporter.LogUncomparedDestination(targetPath);
+            return false;
         }
 
         // Warn in both a dry run and a live import: the target name already holds a different file.
@@ -808,5 +951,6 @@ public static class MediaManagerService
 public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);
 
 /// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
-/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported".</summary>
-public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders);
+/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported", and whether TMDB was
+/// unavailable for part of the scan, so its unmatched rows are not presented as titles TMDB does not know.</summary>
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false);

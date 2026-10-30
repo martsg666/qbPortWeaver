@@ -8,6 +8,7 @@ setting and forcing a reconnect - so the new port is live in about five seconds 
 never has to be restarted.
 """
 
+import errno
 import os
 import secrets
 import threading
@@ -18,7 +19,7 @@ from pynicotine.pluginsystem import BasePlugin
 from bridge import errors, handshake
 from bridge.core_io import INFORMATIONAL_CAPABILITIES, CoreIO
 from bridge.main_thread import MainThreadProxy
-from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
+from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, STATE_OFFLINE, PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
 
@@ -52,11 +53,41 @@ _BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
 def _bridge_url(host, port):
-    """The address to reach the bridge at from this machine. 0.0.0.0 is a listen address (every
-    interface), not one Windows can connect to, so a wildcard bind is shown as loopback, which it
-    also accepts - this is the URL a user copies into qbPortWeaver by hand."""
-    connect_host = "127.0.0.1" if host == "0.0.0.0" else host
+    """The address to reach the bridge at from this machine. 0.0.0.0 and :: are listen addresses
+    (every interface), not ones Windows can connect to, so a wildcard bind is shown as loopback,
+    which it also accepts - this is the URL a user copies into qbPortWeaver by hand. An IPv6
+    address is bracketed, as a URL needs."""
+    bare = host.strip("[]")
+    connect_host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(bare, bare)
+    if ":" in connect_host:
+        connect_host = f"[{connect_host}]"
     return f"http://{connect_host}:{port}/"  # NOSONAR S5332 - loopback bridge; TLS not applicable to a 127.0.0.1 IPC channel
+
+
+def _port_change_summary(result, port):
+    """What /qbpw-port did to the port and the connection: a reconnect that failed or was not
+    possible leaves the new port waiting for the next connection."""
+    if not result["changed"]:
+        return f"Already listening on port {port}."
+    action = result.get("reconnect")
+    if action == "reconnect":
+        tail = "Reconnecting; it will be live in a few seconds."
+    elif action == "connect":
+        tail = "Connecting; it will be live in a few seconds."
+    else:
+        tail = "It takes effect on the next connection."
+    return f"Port changed from {result['previous_port']} to {port}. {tail}"
+
+
+def _upnp_notes(result):
+    """set_port turns UPnP off, as qbPortWeaver does, so the command says so - also when the port
+    itself was already right - along with any mapping it could not remove."""
+    notes = []
+    if result.get("upnp_disabled"):
+        notes.append("UPnP was turned off, since the VPN forwards the port.")
+    if any(code.startswith("portmapper_") for code in result.get("warnings", [])):
+        notes.append("The old UPnP mapping may remain on the router.")
+    return notes
 
 
 def _port_summary(core_io):
@@ -65,6 +96,17 @@ def _port_summary(core_io):
     active = core_io.active_port()
     in_use = f"{active} in use" if active is not None else "none in use (not connected)"
     return f"{core_io.configured_port()} configured, {in_use}"
+
+
+# Windows reports socket errors with their WSA codes: 10048 is address in use, 10013 access
+# denied, which is also what a port inside one of Windows' reserved ranges gives.
+_PORT_UNAVAILABLE_WINERRORS = (10048, 10013)
+
+
+def _is_port_unavailable(error):
+    """Whether a bind failed because of the port, not the address."""
+    return (error.errno in (errno.EADDRINUSE, errno.EACCES, *_PORT_UNAVAILABLE_WINERRORS)
+            or getattr(error, "winerror", None) in _PORT_UNAVAILABLE_WINERRORS)
 
 
 class Plugin(BasePlugin):
@@ -179,8 +221,10 @@ class Plugin(BasePlugin):
 
     # ------------------------------------------------------------- start / stop
 
-    def _start(self):
+    def _start(self, connection_flags=None):
         self._core_io = CoreIO(self.config, self.core, self.log)
+        if connection_flags is not None:
+            self._core_io.restore_connection_flags(connection_flags)
         capabilities = self._core_io.probe()
 
         self._proxy = MainThreadProxy()
@@ -247,6 +291,12 @@ class Plugin(BasePlugin):
                     nicotine_version=self._nicotine_version()
                 )
             except OSError as error:
+                # Only a port that is taken or reserved is worth trying another for. Anything else -
+                # a name that does not resolve, an address this machine no longer has - fails the same
+                # way on every port, and blaming the port would send the user to the wrong setting.
+                if not _is_port_unavailable(error):
+                    raise OSError(f"Could not listen on address '{host}' ({error}) - "
+                                  "check the Address setting in the plugin's settings") from error
                 last_error = error
                 if candidate:
                     self.log("Port %s is not available (%s); picking a free port instead.",
@@ -320,7 +370,7 @@ class Plugin(BasePlugin):
 
         core_io = self._core_io
         host = self.settings.get("bind_host") or "127.0.0.1"
-        listening = " (listening on all interfaces)" if host == "0.0.0.0" else ""
+        listening = " (listening on all interfaces)" if host.strip("[]") in ("0.0.0.0", "::") else ""
         self.output(f"Bridge:      {_bridge_url(host, self._bridge.port)}{listening}")
         self.output(f"Connection:  {core_io.connection_state() or 'unknown'}")
 
@@ -390,11 +440,7 @@ class Plugin(BasePlugin):
             self.output(f"Could not set the port: {error}")
             return
 
-        if not result["changed"]:
-            self.output(f"Already listening on port {port}.")
-        else:
-            self.output(f"Port changed from {result['previous_port']} to {port}. "
-                        "Reconnecting; it will be live in a few seconds.")
+        self.output(" ".join([_port_change_summary(result, port)] + _upnp_notes(result)))
 
     def test_command(self, args, **_unused):
         if self._bridge is None:
@@ -439,7 +485,10 @@ class Plugin(BasePlugin):
             self._reply_later(source, f"Could not check port {port}: {error}")
             return
 
-        if snapshot["state"] != STATE_DONE:
+        if snapshot["state"] == STATE_OFFLINE:
+            self._reply_later(source, f"Nicotine+ is not connected to the server, so port {port} is not "
+                                      "listening. Connect, then try again.")
+        elif snapshot["state"] != STATE_DONE:
             # Undetermined rather than closed: the check service was unreachable, or the verdict
             # had not arrived yet. Saying "closed" here would send the user chasing a firewall.
             self._reply_later(source, f"Could not determine whether port {port} is reachable. Try again shortly.")
@@ -485,9 +534,11 @@ class Plugin(BasePlugin):
             self.output(f"Token starts with: {self._bridge.token[:6]}...")
 
     def restart_command(self, _args, **_unused):
+        # The connection events already seen are kept: a restart is not a reconnect.
+        connection_flags = self._core_io.connection_flags() if self._core_io is not None else None
         self._stop()
         try:
-            self._start()
+            self._start(connection_flags)
             self.output("The bridge has been restarted.")
         # Report the failure; a command must never break the command loop.
         except Exception as error:  # noqa: BLE001

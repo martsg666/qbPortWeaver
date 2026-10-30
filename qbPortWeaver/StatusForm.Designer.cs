@@ -66,6 +66,8 @@ partial class StatusForm
         grpHistory.SuspendLayout();
         grpStats.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblAutoRecoveryLabel);
         grpStatus.Controls.Add(lblAutoRecoveryValue);
@@ -202,10 +204,10 @@ partial class StatusForm
         lblAutoRecoveryValue.TabIndex = 17;
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
-        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Every value this
-        // row produces fits 384px today (the longest, "Holding - cannot confirm internet, retry in
-        // ~15m", is ~315px), but the countdown that would be cut first sits at the end, and a longer
-        // duration or a larger system font could still reach the edge.
+        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Values are kept to
+        // fit 384px with room to spare, and the exit-address states are deliberately short, with their
+        // addresses and advice in the tooltip. A larger system font could still reach the edge, and the
+        // tooltip carries the full text when it does.
         lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
@@ -220,7 +222,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 350; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
+        colHistoryEvent.Width = 350; // starting width; set at runtime to fill the list beside Time + Port, grown to the longest entry on populate (StatusForm.EventColumnMinWidth)
         // Window (input surface), not the Control chrome: this is an embedded data panel inside a
         // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
         // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.

@@ -1,5 +1,4 @@
-﻿using System.Net.NetworkInformation;
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 
 namespace qbPortWeaver;
@@ -24,8 +23,95 @@ public sealed partial class ProtonVpnManager : IVpnManager
     [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
     private static partial Regex PortPairRegex();
 
+    // The server address the client is connected to: "... connected to server with IPv4 'a.b.c.d' ...".
+    // Written more than once per connection, the first time sometimes with a different address of the
+    // same server, so only the newest line counts - that one has matched the NAT-PMP forward address.
+    [GeneratedRegex(@"connected to server with IPv4 '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'")]
+    private static partial Regex ServerAddressRegex();
+
+    // The server name: "... Connected to server CA#104 ...". Case-sensitive on purpose: the address line
+    // above contains "connected to server with", which must not be read as a server named "with".
+    [GeneratedRegex(@"Connected to server ([A-Z]{2}(?:-[A-Z]{2})?#\d+[A-Za-z0-9-]*)")]
+    private static partial Regex ServerNameRegex();
+
+    // Read lazily, once per instance: only the exit-address check needs them (on a closed or undetermined
+    // port test, on an open one while exit reconnects are spent, and in Diagnostics), whereas the port is
+    // read every cycle. The server lines are written once per
+    // connection, so on a long session they sit far back in the file or in the rotated one, and once both
+    // files have lost them they stay null. The forward address is asked from the gateway first anyway
+    // (see GetForwardAddressAsync), so the address line is only its fallback; the name line is the one
+    // source of the server name in messages, which is left out when it is gone.
+    private bool _serverScanned;
+    private System.Net.IPAddress? _serverAddress;
+    private string? _serverName;
+
+    // The forward address GetForwardAddressAsync settled on, once per instance like the scan above.
+    private bool _forwardResolved;
+    private System.Net.IPAddress? _forwardAddress;
+
     /// <inheritdoc />
     public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
+
+    /// <inheritdoc />
+    // The tunnel gateway first: ProtonVPN forwards the port through NAT-PMP on it, so its external address
+    // is the forward address, the same reply NAT-PMP mode reads (the newest log line has matched it). The
+    // log's server line is the fallback for a gateway that does not answer; it is written once per
+    // connection and rotates out of both log files within hours, so on its own the check would stop
+    // running a few hours into a connection.
+    public async Task<System.Net.IPAddress?> GetForwardAddressAsync(CancellationToken cancellationToken = default)
+    {
+        if (_forwardResolved) return _forwardAddress;
+        string? adapter = ActiveAdapterName;
+        System.Net.IPAddress? address = adapter is null
+            ? null
+            : await NatPmpManager.QueryExternalAddressAsync(adapter, cancellationToken).ConfigureAwait(false);
+        if (address is not null)
+        {
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: forward address {address} from the '{adapter}' gateway");
+        }
+        else
+        {
+            EnsureServerScanned();
+            address = _serverAddress;
+            string reason = adapter is null ? "no ProtonVPN adapter is up" : "gateway gave none";
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: {reason}, forward address {address?.ToString() ?? "none"} from the client log");
+        }
+        _forwardAddress = address;
+        _forwardResolved = true;
+        return address;
+    }
+
+    /// <inheritdoc />
+    public System.Net.IPAddress? TunnelAddress
+    {
+        get
+        {
+            string? adapter = ActiveAdapterName;
+            return adapter is null ? null : VpnAdapter.GetIPv4Address(adapter);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool IsProtonVpnOverOpenVpn =>
+        string.Equals(ActiveAdapterName, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
+
+    // The first up adapter carrying one of ProtonVPN's names, read live: a protocol switch changes it.
+    // The two configured names are read once, not per adapter.
+    private static string? ActiveAdapterName
+    {
+        get
+        {
+            string legacyName = Config.GetAdapterName();
+            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
+            return VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name, legacyName, nativeName))?.Name;
+        }
+    }
+
+    /// <inheritdoc />
+    public string ForwardSource
+    {
+        get { EnsureServerScanned(); return _serverName is null ? ProviderName : $"{ProviderName} server {_serverName}"; }
+    }
 
     /// <summary>Creates a manager that reads the forwarded port from the ProtonVPN client log file at <paramref name="logFilePath"/>.</summary>
     public ProtonVpnManager(string logFilePath)
@@ -36,28 +122,15 @@ public sealed partial class ProtonVpnManager : IVpnManager
     /// <inheritdoc />
     public bool IsVpnConnected()
     {
-        try
-        {
-            var adapters = NetworkInterface.GetAllNetworkInterfaces();
-            // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard)
-            // or "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth)
-            // name it "ProTUN". Both configured names are read once here, then matched per adapter.
-            string legacyName = Config.GetAdapterName();
-            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
-            NetworkInterface? matched = adapters.FirstOrDefault(adapter =>
-                adapter.OperationalStatus == OperationalStatus.Up &&
-                MatchesProtonAdapter(adapter.Name, legacyName, nativeName));
-
-            LogManager.Instance.LogDebug(matched is not null
-                ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched.Name}' is connected"
-                : $"ProtonVpnManager.IsVpnConnected: Adapter '{legacyName}'/'{nativeName}' is not found or not connected");
-
-            return matched is not null;
-        }
-        catch (Exception ex)
-        {
-            return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
-        }
+        // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard) or
+        // "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth) name it
+        // "ProTUN". The same lookup as TunnelAddress and IsProtonVpnOverOpenVpn, so "connected" and the
+        // exit check can never disagree about which adapter is the tunnel.
+        string? matched = ActiveAdapterName;
+        LogManager.Instance.LogDebug(matched is not null
+            ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched}' is connected"
+            : $"ProtonVpnManager.IsVpnConnected: Adapter '{Config.GetAdapterName()}'/'{Config.GetNativeAdapterName()}' is not found or not connected");
+        return matched is not null;
     }
 
     /// <inheritdoc />
@@ -134,12 +207,74 @@ public sealed partial class ProtonVpnManager : IVpnManager
         }
     }
 
-    // Scans the log file from the end in chunks and returns the most recent matched port.
-    // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
-    // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
-    // replacement char on that boundary. This is harmless because the target pattern
-    // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
+    // Returns the most recent matched port. Falls back to the rotated log when the current one has no port
+    // line yet: ProtonVPN writes one about every 10 seconds, but a file it has just rotated to has none
+    // for a moment, and a cycle landing there would otherwise report port detection as failed.
     private int? ReadLastPortFromLog()
+    {
+        int? port = null;
+        bool VisitPortLine(string line)
+        {
+            var match = PortPairRegex().Match(line);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int p)) port = p;
+            return port is not null;
+        }
+        ScanLogBackwards(_logFilePath, VisitPortLine);
+        string rotated = RotatedLogPath;
+        if (port is null && File.Exists(rotated))
+            ScanLogBackwards(rotated, VisitPortLine);
+        return port;
+    }
+
+    // The log ProtonVPN rotated away last: client-logs.1.txt beside client-logs.txt.
+    private string RotatedLogPath =>
+        Path.Combine(Path.GetDirectoryName(_logFilePath) ?? string.Empty,
+            Path.GetFileNameWithoutExtension(_logFilePath) + ".1" + Path.GetExtension(_logFilePath));
+
+    // Finds the newest server address and server name lines, once per instance. Any failure leaves
+    // them null: the forward address then comes from the gateway alone, and messages leave out the
+    // server name.
+    // Falls back to the rotated log (client-logs.1.txt) for whichever line the current one lacks:
+    // ProtonVPN writes both only when it connects, and rotates its log about every 400 KB, so for much
+    // of a long session they are only in the rotated file. The port line needs no such fallback - it is
+    // written about every 10 seconds.
+    private void EnsureServerScanned()
+    {
+        if (_serverScanned) return;
+        _serverScanned = true;
+        if (string.IsNullOrWhiteSpace(_logFilePath) || !File.Exists(_logFilePath)) return;
+        try
+        {
+            ScanLogBackwards(_logFilePath, VisitServerLine);
+            string rotated = RotatedLogPath;
+            if ((_serverAddress is null || _serverName is null) && File.Exists(rotated))
+                ScanLogBackwards(rotated, VisitServerLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"ProtonVpnManager.EnsureServerScanned: {ex.Message}");
+        }
+        LogManager.Instance.LogDebug($"ProtonVpnManager.EnsureServerScanned: server {_serverName ?? "(none)"} at {_serverAddress?.ToString() ?? "(none)"}");
+    }
+
+    // Takes the newest of each line not found yet; true once both are known, which ends the scan.
+    private bool VisitServerLine(string line)
+    {
+        if (_serverAddress is null && ServerAddressRegex().Match(line) is { Success: true } address &&
+            System.Net.IPAddress.TryParse(address.Groups[1].Value, out var parsed))
+            _serverAddress = parsed;
+        if (_serverName is null && ServerNameRegex().Match(line) is { Success: true } name)
+            _serverName = name.Groups[1].Value;
+        return _serverAddress is not null && _serverName is not null;
+    }
+
+    // Scans the log file from the end in chunks, passing each line newest first to visit until it
+    // returns true. Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
+    // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
+    // replacement char on that boundary. This is harmless because the patterns searched for are pure
+    // ASCII and ProtonVPN logs use ASCII-only content.
+
+    private static void ScanLogBackwards(string path, Func<string, bool> visit)
     {
         // FileShare.Delete as well as ReadWrite. Windows requires DELETE access on an open handle before
         // another process can rename over it, so without it a log rotation by ProtonVPN *during* this
@@ -148,7 +283,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
         // we cannot observe and did not have to cause. Nothing is torn by allowing it - the scan either
         // completes on the handle it opened or fails cleanly, and the enclosing catch turns that into
         // "no port found" for one cycle, which the next cycle retries.
-        using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read,
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
 
         long bytesRemaining = fs.Length;
@@ -169,25 +304,16 @@ public sealed partial class ProtonVpnManager : IVpnManager
             // lines[0] may be a partial line whose start is in the next (earlier) chunk
             lineFragment = lines[0];
 
-            // Process complete lines right-to-left; stop on first match
+            // Process complete lines right-to-left; stop as soon as visit is satisfied
             for (int i = lines.Length - 1; i >= 1; i--)
             {
                 string line = lines[i].TrimEnd('\r');
-                if (line.Length == 0) continue;
-                var match = PortPairRegex().Match(line);
-                if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
-                    return port;
+                if (line.Length > 0 && visit(line)) return;
             }
         }
 
-        // Check the very first line of the file
+        // The very first line of the file
         if (lineFragment.Length > 0)
-        {
-            var match = PortPairRegex().Match(lineFragment.TrimEnd('\r'));
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
-                return port;
-        }
-
-        return null;
+            visit(lineFragment.TrimEnd('\r'));
     }
 }

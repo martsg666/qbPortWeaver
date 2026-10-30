@@ -16,7 +16,6 @@ public sealed class NicotineClient : ManagedClientBase
 {
     private const string PathPreferences = "/v1/preferences";
     private const string PathPort = "/v1/port";
-    private const string PathStatus = "/v1/status";
     private const string PathPortTest = "/v1/porttest";
     private const string JsonContentType = "application/json";
     private const string AuthorizationHeader = "Authorization";
@@ -33,7 +32,8 @@ public sealed class NicotineClient : ManagedClientBase
     private const string StateDone = "done";
 
     // Long enough for the plugin's own capped wait plus a round trip, short enough that the
-    // shared 10 s HttpClient timeout still bounds the request.
+    // shared 10 s HttpClient timeout still bounds the request. The plugin counts its main-thread
+    // reads before the wait against this, so they do not add to it.
     private const int PortTestWaitMs = 8000;
 
     // Nicotine+ reports "connecting" while the bridge's own reconnect is in flight. Treated as
@@ -48,8 +48,9 @@ public sealed class NicotineClient : ManagedClientBase
     // Deduplicates the --port guidance. The condition lasts for the life of the Nicotine+
     // process and each sync cycle builds a fresh client, so the latch has to outlive the
     // instance or every cycle would repeat the same warning. Cleared on a successful port
-    // change (see SetListeningPortAsync): the lock is then gone, and a later one must warn
-    // again rather than be suppressed as a repeat of a condition that has since been fixed.
+    // change (see SetListeningPortAsync) and when the plugin reports no lock (GetPreferencesAsync):
+    // the lock is then gone, and a later one must warn again rather than be suppressed as a repeat
+    // of a condition that has since been fixed.
     private static string? _lastLockedWarning; // NOSONAR S2696 - one sync loop; the dedupe is deliberately process-wide
 
     /// <inheritdoc/>
@@ -83,11 +84,12 @@ public sealed class NicotineClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>A cold start makes the plugin publish a fresh connection file; re-read it so the
-    /// rest of this cycle talks to the endpoint it actually bound.</remarks>
+    /// rest of this cycle talks to the endpoint it actually bound. Read directly rather than through
+    /// TryRediscover, so a file not written yet does not spend the one retry later requests rely on.</remarks>
     public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
     {
         bool started = await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
-        if (started) TryRediscover();
+        if (started) ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: true);
         return started;
     }
 
@@ -131,6 +133,12 @@ public sealed class NicotineClient : ManagedClientBase
             // outside the VPN, while null is "this client cannot report an interface" and skips
             // the check entirely. Same convention as qBittorrent.
             string? interfaceName = root.GetStringOrNull("interface");
+
+            // The lock reported gone: re-arm the --port warning. A port that already matches needs no
+            // write, so the successful-change path alone would leave it latched across a removed and
+            // re-added lock.
+            if (root.TryGetProperty("port_locked_by_cli", out var locked) && locked.ValueKind == JsonValueKind.False)
+                _lastLockedWarning = null;
 
             return (listenPort, interfaceName);
         }
@@ -199,10 +207,11 @@ public sealed class NicotineClient : ManagedClientBase
     /// <inheritdoc/>
     /// <remarks>Reports <c>"connected"</c> or <c>"disconnected"</c>. The plugin's own
     /// <c>"connecting"</c> state - which covers the few seconds after a port change while the
-    /// client rebinds - is reported as connected, so a sync never reads its own work as an outage.</remarks>
+    /// client rebinds - is reported as connected, so a sync never reads its own work as an outage.
+    /// Read from /v1/preferences, which carries the same field, so /v1/status stays diagnosis-only.</remarks>
     public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
     {
-        using var response = await SendAsync(HttpMethod.Get, PathStatus, null,
+        using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
             LogLevel.Error, cancellationToken).ConfigureAwait(false);
         if (response is null) return null;
 
@@ -244,7 +253,7 @@ public sealed class NicotineClient : ManagedClientBase
             if (state != StateDone)
             {
                 LogManager.Instance.LogDebug(
-                    $"NicotineClient.TestListeningPortAsync: The check is '{state ?? "unknown"}' - treating the result as undetermined");
+                    $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
                 return null;
             }
 
@@ -290,8 +299,14 @@ public sealed class NicotineClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
-    /// launch must use the current value rather than the one saved in Settings.</remarks>
-    protected override string ResolveUrl() => _endpoint;
+    /// launch must use the current value rather than the one saved in Settings. The connection file is
+    /// re-read on each probe: Nicotine+ was closed, so there was none until the plugin starts, and a
+    /// bridge on another port (http_port 0, or a busy configured one) could otherwise never answer.</remarks>
+    protected override string ResolveUrl()
+    {
+        ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: true);
+        return _endpoint;
+    }
 
     // ------------------------------------------------------------------ transport
 
@@ -444,7 +459,10 @@ public sealed class NicotineClient : ManagedClientBase
             var (text, level) = item.GetString() switch
             {
                 "reconnect_unsupported" => ($"{ClientName} saved port {port} but this version cannot reconnect from the plugin - it keeps listening on the old port until you reconnect or restart {ClientName}", LogLevel.Warn),
+                "reconnect_failed" => ($"{ClientName} saved port {port} but could not reconnect to apply it - it keeps listening on the old port until you reconnect or restart {ClientName}", LogLevel.Warn),
+                "connect_failed" => ($"{ClientName} saved port {port} but could not connect - port {port} applies when you connect", LogLevel.Warn),
                 "connect_unsupported" => ($"{ClientName} is offline and this version cannot connect from the plugin - port {port} applies when you connect", LogLevel.Info),
+                "connect_skipped" => ($"{ClientName} was disconnected by you - port {port} applies when you connect", LogLevel.Info),
                 "setup_incomplete" => ($"{ClientName} has not finished its first-run setup - port {port} applies once it is completed and connected", LogLevel.Info),
                 "portmapper_unsupported" or "portmapper_failed" => ($"{ClientName} could not remove its UPnP port mapping - your router may still forward the old port", LogLevel.Warn),
                 // A code from a newer plugin: recorded, but not worth alerting on without knowing it.
@@ -470,13 +488,13 @@ public sealed class NicotineClient : ManagedClientBase
         string message = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized =>
-                $"{ClientName} bridge plugin rejected the token - use Refresh next to the Plugin token in Settings to read the current one",
+                $"{ClientName} bridge plugin rejected the token - click ⟳ next to the Plugin token on the {ClientName} tab in Settings to read the current one",
             HttpStatusCode.NotFound =>
                 $"{ClientName} bridge plugin does not provide {path} - reinstall it from Settings to match this version of qbPortWeaver",
             _ => $"{ClientName} bridge plugin returned HTTP {(int)response.StatusCode} {response.StatusCode} for {path}{detail}"
         };
 
-        Log(message, failureLevel);
+        LogManager.Instance.LogMessage(message, failureLevel);
     }
 
     private static async Task<(string Code, string Detail)> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -524,7 +542,7 @@ public sealed class NicotineClient : ManagedClientBase
             null => "no response",
             _ => exception.Message,
         };
-        Log($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
+        LogManager.Instance.LogMessage($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
         if (exception is not null)
             LogManager.Instance.LogDebug($"NicotineClient.{callerName}: {exception.GetType().Name}");
 
@@ -535,12 +553,6 @@ public sealed class NicotineClient : ManagedClientBase
                 $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins, with plugins turned on",
                 LogLevel.Error);
         }
-    }
-
-    private static void Log(string message, LogLevel level)
-    {
-        if (level == LogLevel.Debug) LogManager.Instance.LogDebug(message);
-        else LogManager.Instance.LogMessage(message, level);
     }
 
     // No cookie container and no default headers: the bridge authenticates per request with a

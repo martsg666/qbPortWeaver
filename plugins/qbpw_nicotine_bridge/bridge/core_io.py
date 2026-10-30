@@ -299,8 +299,8 @@ class CoreIO:
         if will_disable_upnp:
             self._remove_port_mapping(warnings)
 
-        action = self._reconnect(warnings) if needs_rebind else "none"
-        if needs_rebind:
+        action = self._reconnect(warnings, respect_manual_disconnect=True) if needs_rebind else "none"
+        if action != "none":
             self.note_port_changed()
 
         return {"ok": True, "changed": needs_rebind, "port": port, "previous_port": previous,
@@ -311,19 +311,26 @@ class CoreIO:
         action = self._reconnect(warnings)
         return {"ok": True, "action": action, "warnings": warnings}
 
-    def _reconnect(self, warnings):
+    def _reconnect(self, warnings, respect_manual_disconnect=False):
         """Rebind the listening socket by cycling the server connection.
 
         core.reconnect() only closes an existing connection, so it is a silent no-op when
         already offline - the new port would never be picked up. Offline, connect() is the
         call that binds.
+
+        A port change does not connect a Nicotine+ the user disconnected themselves: that would
+        log them back in and start sharing unasked. The port is saved already and applies when
+        they connect. An explicit POST /v1/reconnect still connects, since that is what it asks.
         """
         if self.is_logged_in():
             if not self.capabilities.get("reconnect"):
                 warnings.append("reconnect_unsupported")
                 return "none"
-            self._core.reconnect()
-            return "reconnect"
+            return self._cycle_connection(self._core.reconnect, "reconnect", warnings)
+
+        if respect_manual_disconnect and self._manual_disconnect:
+            warnings.append("connect_skipped")
+            return "none"
 
         if not self.capabilities.get("connect"):
             warnings.append("connect_unsupported")
@@ -335,8 +342,23 @@ class CoreIO:
             warnings.append("setup_incomplete")
             return "none"
 
-        self._core.connect()
-        return "connect"
+        return self._cycle_connection(self._core.connect, "connect", warnings)
+
+    def _cycle_connection(self, call, action, warnings):
+        """Run reconnect() or connect() and report a failure as a warning, not an error.
+
+        The port is already saved by then, so the next sync reads it back as matching and
+        never asks again: an exception here would leave Nicotine+ listening on the old port
+        with nothing but one failed request to show for it. As a warning the app logs it at
+        Warn, and the saved port takes effect on Nicotine+'s next connection.
+        """
+        try:
+            call()
+        except Exception as error:  # noqa: BLE001 - a failed rebind is reported to the caller
+            self._log("Could not %s after the port change: %s", (action, error))
+            warnings.append(action + "_failed")
+            return "none"
+        return action
 
     def _remove_port_mapping(self, warnings):
         if not self.capabilities.get("portmapper"):
@@ -387,10 +409,24 @@ class CoreIO:
     def note_disconnected(self, user_initiated):
         self._manual_disconnect = bool(user_initiated)
 
+    def connection_flags(self):
+        """The connection history the events above built, for a bridge restart to hand on."""
+        return self._manual_disconnect, self._have_connected
+
+    def restore_connection_flags(self, flags):
+        """Takes over the history of the CoreIO this one replaces.
+
+        Nicotine+ sends no event for the state it is already in, so a new CoreIO would otherwise
+        forget that the user disconnected and let the next port change log them back in.
+        """
+        self._manual_disconnect, self._have_connected = flags
+
     def note_port_changed(self):
         """Opens the reconnect grace window read by ``connection_state``.
 
-        Called from ``set_port`` after a rebind, so ``_last_port_change`` has one write site -
-        the same shape as the two hooks above, which are the only writers of their own fields.
+        Called from ``set_port`` once a rebind was started (not when the reconnect was skipped
+        or failed, which would report "connecting" for a client nothing is connecting), so
+        ``_last_port_change`` has one write site - the same shape as the two hooks above, which
+        are the only writers of their own fields.
         """
         self._last_port_change = time.monotonic()

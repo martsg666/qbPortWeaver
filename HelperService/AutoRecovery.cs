@@ -12,6 +12,10 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal static partial class AutoRecovery
 {
+    // These timeouts add up to the helper's worst-case restart time - roughly 100-115s across the SCM
+    // stop, the escalating force-kill, the pause, the start and the post-start verification - which
+    // HelperServiceClient.ResponseTimeoutMs (120s, in the main app) must stay above. Raising any of them
+    // means re-deriving that sum and raising the client's bound to match.
     private const int ProcessKillTimeoutMs = 5000;
     // Delay between stop and start to let the service host fully release its handles
     // and listening sockets before we ask the SCM to bring it back up.
@@ -136,8 +140,8 @@ internal static partial class AutoRecovery
         }
     }
 
-    // Log levels around the kill escalation, so the four "timed out - force-killing" lines do not drift
-    // back to Warn: an *announcement* that we are escalating to a force-kill is Info, because escalating
+    // Log levels around the kill escalation, so the force-kill announcements do not drift back to Warn:
+    // an *announcement* that we are escalating to a force-kill is Info, because escalating
     // is the designed fallback and its outcome is logged separately. Only the *outcome* carries severity -
     // Info when a stage succeeds ("force-killed via ..."), Warn when one fails ("Failed to ...", "could
     // not be killed", "still running"). The distinction matters beyond tidiness: the helper's Warn count
@@ -357,7 +361,13 @@ internal static partial class AutoRecovery
     {
         try
         {
-            if (sc.ServiceHandle.IsInvalid) return;
+            // Every early return logs its reason: StopServiceAsync's "still not stopped" line that follows
+            // relies on each route having said why the process was not killed.
+            if (sc.ServiceHandle.IsInvalid)
+            {
+                logger.LogMessage($"Service '{sc.ServiceName}' could not be force-killed - its service handle is not valid", LogLevel.Warn);
+                return;
+            }
 
             int bufSize = Marshal.SizeOf<ServiceStatusProcess>();
             IntPtr buf = Marshal.AllocHGlobal(bufSize);
@@ -368,7 +378,11 @@ internal static partial class AutoRecovery
                 // ServiceController is finalized concurrently. Avoids DangerousGetHandle.
                 if (!QueryServiceStatusEx(sc.ServiceHandle,
                         SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
+                {
+                    logger.LogMessage($"Service '{sc.ServiceName}' could not be force-killed - its process ID could not be read " +
+                        $"(error {Marshal.GetLastPInvokeError()})", LogLevel.Warn);
                     return;
+                }
 
                 var status = Marshal.PtrToStructure<ServiceStatusProcess>(buf);
 
@@ -384,7 +398,12 @@ internal static partial class AutoRecovery
                 }
 
                 int pid = status.dwProcessId;
-                if (pid <= 0) return;
+                if (pid <= 0)
+                {
+                    // No process: the service stopped on its own after the stop timed out.
+                    logger.LogMessage($"Service '{sc.ServiceName}' has no process left to force-kill", LogLevel.Info);
+                    return;
+                }
 
                 // Known residual risk: between QueryServiceStatusEx returning the PID and
                 // GetProcessById opening it, the service process could exit cleanly and Windows
@@ -393,7 +412,12 @@ internal static partial class AutoRecovery
                 // typically takes much longer, so the probability is negligible in practice.
                 Process process;
                 try { process = Process.GetProcessById(pid); }
-                catch (ArgumentException) { return; } // already exited between SCM query and here
+                catch (ArgumentException)
+                {
+                    // Already exited between the SCM query and here.
+                    logger.LogMessage($"Service '{sc.ServiceName}' process (PID {pid}) exited before it could be force-killed", LogLevel.Info);
+                    return;
+                }
 
                 using (process)
                 {
@@ -443,6 +467,26 @@ internal static partial class AutoRecovery
         }
     }
 
+    // Waits for a start the SCM itself is carrying out - its recovery policy restarting the service -
+    // rather than calling Start(), which would throw while one is pending. Shared by the two places
+    // StartServiceAsync finds the service already starting.
+    private static async Task AwaitScmStartAsync(ServiceController sc, string serviceName, HelperLogger logger, CancellationToken cancellationToken)
+    {
+        logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
+        try
+        {
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
+            logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            // Not a failure yet: the verification after StartServiceAsync gives the verdict, as for its own
+            // start timeout, and a throw would skip it and report Error for a service that may be Running a
+            // moment later.
+            logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
+        }
+    }
+
     private static async Task StartServiceAsync(string serviceName, HelperLogger logger, CancellationToken cancellationToken = default)
     {
         using var sc = new ServiceController(serviceName);
@@ -458,19 +502,7 @@ internal static partial class AutoRecovery
         // already starting, just wait for it instead of calling Start() which would throw.
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
-            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                // Not a failure yet: the verification after this method gives the verdict, as for the
-                // start timeout below, and a throw would skip it and report Error for a service that
-                // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
-            }
+            await AwaitScmStartAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -498,19 +530,7 @@ internal static partial class AutoRecovery
             sc.Refresh();
             if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
                 throw;
-            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                // Not a failure yet: the verification after this method gives the verdict, as for the
-                // start timeout below, and a throw would skip it and report Error for a service that
-                // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
-            }
+            await AwaitScmStartAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -572,7 +592,11 @@ internal static partial class AutoRecovery
             Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs), cancellationToken).ConfigureAwait(false);
+            // Not cancellable: a token cancelled before Task.Run schedules would skip the wait while netsh
+            // is still running, and the caller's re-enable would then race this command - a disable that
+            // finished last would leave the adapter down. The wait is bounded by NetshTimeoutMs, and a
+            // shutdown is still reported just below, once netsh has exited.
+            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs), CancellationToken.None).ConfigureAwait(false);
             if (!exited)
             {
                 // netsh is a short-lived system utility that always responds to Process.Kill -

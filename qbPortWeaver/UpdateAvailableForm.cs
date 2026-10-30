@@ -44,6 +44,9 @@ internal sealed partial class UpdateAvailableForm : Form
         base.OnLoad(e);
         if (ThemeColors.IsDarkModeEnabled())
             lnkReleaseNotes.LinkColor = ThemeColors.LinkDark;
+        // The first tab stop is a link, and a focused LinkLabel takes Enter, which would open the browser
+        // instead of pressing Download & Install. Focusing it keeps the tab order as laid out.
+        ActiveControl = btnUpdate;
     }
 
     protected override void OnShown(EventArgs e)
@@ -114,7 +117,7 @@ internal sealed partial class UpdateAvailableForm : Form
         {
             if (IsDisposed) return;
             SetDownloadingUi(false);
-            lblStatus.Text = "The download failed its integrity check - opening the release page instead.";
+            lblStatus.Text = "Integrity check failed - opening the release page instead.";
             LogManager.Instance.LogMessage(
                 $"Update download rejected: {ex.Message}. The file was deleted; falling back to the release page",
                 LogLevel.Error);

@@ -33,8 +33,8 @@ partial class SettingsForm
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
         chkResyncOnNetworkChange  = new CheckBox();
-        lblVpnAdapter          = new Label();
-        cboVpnAdapter          = new ComboBox();
+        lblVpnAdapter             = new Label();
+        cboVpnAdapter             = new ComboBox();
         btnRefreshAdapters        = new Button();
         lblStaticPort             = new Label();
         nudStaticPort             = new NumericUpDown();
@@ -153,6 +153,8 @@ partial class SettingsForm
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).BeginInit();
         grpExtra.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpGeneral ────────────────────────────────────────────────
         grpGeneral.Controls.Add(lblClient);
         grpGeneral.Controls.Add(cboClient);
@@ -298,7 +300,7 @@ partial class SettingsForm
         nudStaticPort.Name     = "nudStaticPort";
         nudStaticPort.Size     = new Size(80, 23);
         nudStaticPort.TabIndex = 14;
-        // Notify and show-update rows follow immediately after the Static port row at 29px spacing
+        // The notify, wait-for-VPN and show-update rows follow the Static port row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
         chkNotifyOnPortUpdate.Location  = new Point(15, 169);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
@@ -918,26 +920,26 @@ partial class SettingsForm
         btnBackupSettings.Location = new Point(12, 449);
         btnBackupSettings.Name     = "btnBackupSettings";
         btnBackupSettings.Size     = new Size(110, 28);
-        btnBackupSettings.TabIndex = 3;
+        btnBackupSettings.TabIndex = 1;
         btnBackupSettings.Text     = "Back Up…";
         btnBackupSettings.Click   += btnBackupSettings_Click;
         btnRestoreSettings.Location = new Point(130, 449);
         btnRestoreSettings.Name     = "btnRestoreSettings";
         btnRestoreSettings.Size     = new Size(110, 28);
-        btnRestoreSettings.TabIndex = 4;
+        btnRestoreSettings.TabIndex = 2;
         btnRestoreSettings.Text     = "Restore…";
         btnRestoreSettings.Click   += btnRestoreSettings_Click;
         btnOK.Location = new Point(344, 449);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
-        btnOK.TabIndex = 1;
+        btnOK.TabIndex = 3;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
         btnCancel.Location     = new Point(434, 449);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
-        btnCancel.TabIndex     = 2;
+        btnCancel.TabIndex     = 4;
         btnCancel.Text         = "Cancel";
         btnCancel.Click       += btnCancel_Click;
         // ── SettingsForm ──────────────────────────────────────────────

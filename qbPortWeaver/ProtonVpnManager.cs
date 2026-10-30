@@ -74,7 +74,8 @@ public sealed partial class ProtonVpnManager : IVpnManager
         {
             EnsureServerScanned();
             address = _serverAddress;
-            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: gateway gave none, forward address {address?.ToString() ?? "none"} from the client log");
+            string reason = adapter is null ? "no ProtonVPN adapter is up" : "gateway gave none";
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetForwardAddressAsync: {reason}, forward address {address?.ToString() ?? "none"} from the client log");
         }
         _forwardAddress = address;
         _forwardResolved = true;

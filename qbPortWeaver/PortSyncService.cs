@@ -1240,7 +1240,7 @@ public sealed class PortSyncService
             // Transition-only: an unset adapter stays unset until the user opens Settings, so the
             // identical line every cycle says nothing new. The status above still reports the error
             // on every cycle, which is the part that should persist. See SetSyncResult's stateKey.
-            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter",
+            SetSyncResult(status, false, "No VPN adapter configured - open Settings and select an adapter",
                 stateKey: NatPmpAdapterStateKey);
             return null;
         }

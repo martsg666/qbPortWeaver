@@ -138,6 +138,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         _themeColors = [ThemeColors.LogError, ThemeColors.LogWarning, ThemeColors.LogInfo, ThemeColors.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
@@ -210,12 +211,13 @@ public partial class LogViewerForm : Form
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
-    // Escape closes the viewer, except while the search box has focus - there Escape clears the search
+    // Escape closes the viewer, except while the search box has focus and holds text - there Escape clears the search
     // (handled in txtSearch_KeyDown). Ctrl+F focuses the search box (same as the Help viewer).
     // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0)
+            && ActiveControl is not ComboBox { DroppedDown: true })
         {
             Close();
             e.Handled = true;
@@ -333,8 +335,8 @@ public partial class LogViewerForm : Form
         chk.BackColor = pnlToolbar.BackColor;
     }
 
-    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (neutral WindowText
-    // for the search-match arrows, the accent for the issue-nav arrows). btnPrev/btnIssuePrev point up.
+    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (the accent ApplyTheme
+    // gives all four). btnPrev/btnIssuePrev point up.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
@@ -445,8 +447,6 @@ public partial class LogViewerForm : Form
         if (index < 0 || index >= TimeRanges.Length) return (null, null);
         return TimeRanges[index].Hours is double hours ? (DateTime.Now.AddHours(-hours), null) : (null, null);
     }
-
-
 
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
@@ -935,11 +935,13 @@ public partial class LogViewerForm : Form
     // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
     // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
     // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
-    // behind. Nothing in the app writes a multi-line entry today (every call passes ex.Message, not
-    // ex.ToString()), so this is unreachable in practice, and telling the two apart would mean
-    // inferring structure the log format does not record - a guess that could just as easily swallow
-    // a real cycle separator. If entries ever do span lines, the fix belongs in the writer: have
-    // LogManager mark continuations explicitly rather than have the reader infer them.
+    // behind. Multi-line entries are written - every log line that carries a full exception
+    // (ex.ToString()) - but a stack trace has no blank lines, so this is reached only by an exception that renders one (an
+    // AggregateException with several inner exceptions ends its list with one): one stray blank row,
+    // cosmetic. Telling the two apart would mean inferring structure the log format does not record -
+    // a guess that could just as easily swallow a real cycle separator. If it ever matters, the fix
+    // belongs in the writer: have LogManager mark continuations explicitly rather than have the reader
+    // infer them.
     private static bool IsSeparatorLine(LogLine line) =>
         line.Level == LevelMeta && string.IsNullOrWhiteSpace(line.Text);
 
@@ -1004,10 +1006,9 @@ public partial class LogViewerForm : Form
     // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
     // by inheriting its parent entry's verdict from here.
     //
-    // Nothing writes a multi-line entry today - every logging call passes ex.Message rather than
-    // ex.ToString() - so the continuation path is not currently exercised. It is handled anyway
-    // because that is a convention nobody enforces: the first ex.ToString() to land would otherwise
-    // split an entry across a filter boundary, silently and in the one tool used to diagnose it.
+    // The continuation path is exercised by the entries that log a full exception (ex.ToString()).
+    // Without it, a stack trace would split from its entry across a filter boundary, silently and in
+    // the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
@@ -1591,6 +1592,7 @@ public partial class LogViewerForm : Form
             TextAlign = ContentAlignment.MiddleCenter,
             Font = lvLog.Font,
             Visible = false,
+            UseMnemonic = false, // shows exception text, which can hold a path with '&' in it
         };
         lvLog.Parent!.Controls.Add(_metaLabel);
         SyncMetaLabelBounds();
@@ -1617,5 +1619,4 @@ public partial class LogViewerForm : Form
             DoubleBuffered = true;
         }
     }
-
 }

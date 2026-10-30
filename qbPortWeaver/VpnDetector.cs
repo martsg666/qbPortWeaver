@@ -6,9 +6,10 @@ namespace qbPortWeaver;
 /// Best-effort detection of which VPN provider is present on this machine, used by the Settings
 /// dialog's Detect button to pre-fill the provider selection. Only providers that install a Windows
 /// service can be found this way, which is exactly <see cref="VpnProviderRegistry.KnownProviders"/>
-/// (ProtonVPN, PIA); NAT-PMP is a gateway protocol with nothing machine-local to look for, so it is
-/// never returned and stays a manual choice. A running service is a stronger signal than one that is
-/// merely installed, so it wins when both providers are present; providers are probed in
+/// (ProtonVPN, PIA); NAT-PMP and Static port name an adapter rather than a product, so there is
+/// nothing to look for, they are never returned and stay a manual choice. A running service is a
+/// stronger signal than one that is merely installed, so it wins when both providers are present;
+/// providers are probed in
 /// <see cref="VpnProviderRegistry.KnownProviders"/> order so the result is deterministic.
 /// </summary>
 internal static class VpnDetector

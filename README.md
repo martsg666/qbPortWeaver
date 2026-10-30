@@ -6,7 +6,7 @@
 
 ## Overview
 
-**qbPortWeaver** is a Windows tray application that syncs the listening port of **qBittorrent**, **Transmission**, **Deluge**, or **Nicotine+** with the port assigned by your VPN provider (**ProtonVPN**, **PIA**, or any **NAT-PMP capable VPN gateway or router**).
+**qbPortWeaver** is a Windows tray application that syncs the listening port of **qBittorrent**, **Transmission**, **Deluge**, or **Nicotine+** with the port assigned by your VPN provider (**ProtonVPN**, **PIA**, any **NAT-PMP capable VPN gateway or router**, or any provider that assigns a **permanent forwarded port**).
 This ensures your client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates the configured client's listening port when changes are detected. It also includes a **Media Manager** for importing files into Plex-compatible library folders using TMDB title matching.
@@ -16,7 +16,7 @@ The application runs in the system tray, manages configuration and logging, and 
 ## Requirements
 
 - Windows 10/11 (x64)
-- ProtonVPN, Private Internet Access (PIA), or any NAT-PMP capable VPN or router with port forwarding enabled
+- ProtonVPN, Private Internet Access (PIA), any NAT-PMP capable VPN or router with port forwarding enabled, or a VPN provider that assigns you a permanent forwarded port
 - One of the following clients installed and configured:
   - **qBittorrent** with Web UI enabled
   - **Transmission** with RPC enabled (see Client Configuration below)
@@ -65,7 +65,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings → General.
 
 - **Multi-VPN Support**
-  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **PIA** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 port mapping, requested for both TCP and UDP). Configurable through the Settings dialog.
+  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **PIA** (via `piactl` CLI), any **NAT-PMP capable VPN gateway or router** (via RFC 6886 port mapping, requested for both TCP and UDP), and any provider that assigns a **permanent forwarded port** in your account (via the **Static port** option, where you enter the port once). Configurable through the Settings dialog.
 
 - **Default Port Fallback**
   When VPN is not connected, optionally sets the client's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
@@ -83,7 +83,10 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured. Restarts stop after three consecutive attempts that do not clear the disconnect, since a cause the client keeps in its own configuration cannot be fixed by restarting; they resume automatically once it reconnects.
 
 - **Port Verification**
-  After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ is checked through its bridge plugin: it uses Nicotine+'s own native port checker when the version has one, and otherwise queries the Soulseek port-test service directly, so reachability works on current releases too. Enabled by default.
+  After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed by a later check, at least half a sync interval after the first, before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers (Deluge's service filters automated requests, so its result is normally undetermined); qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ is checked through its bridge plugin: it uses Nicotine+'s own native port checker when the version has one, and otherwise queries the Soulseek port-test service directly, so reachability works on current releases too. Enabled by default.
+
+- **VPN Exit Address Check**
+  With **NAT-PMP** or **ProtonVPN** as the provider, when a port check reports the port closed or cannot test it, qbPortWeaver also checks that the VPN sends your traffic out on the same address it forwards the port on. Peers are always given the address your traffic leaves from, so if a VPN server forwards the port on one address but sends traffic out on another (seen on ProtonVPN P2P servers over OpenVPN and not over Proton WireGuard, which is why Proton WireGuard is the recommended protocol - see ProtonVPN Configuration), nobody can reach the forwarded port, whatever the client does. The exit address can change from one connection to the next, so a reconnect may fix it. When it happens the log, the tray notification, the Status panel and Diagnostics name both addresses, and, if port-closed recovery is on, qbPortWeaver reconnects the VPN for a new exit address, up to 3 times. If none of them matches, it stops, tells you to connect to a different server (or, on ProtonVPN's OpenVPN protocol, to switch to Proton WireGuard), and holds recovery so the VPN is not restarted over and over. With port-closed recovery off you get the messages only. If the forwarded address is a private or carrier-grade NAT one - a NAT-PMP home router that is itself behind another NAT - no reconnect is made, since none can help: the messages say the port cannot be reached from the Internet and recovery is held. The exit address comes from one small request (retried once if unanswered) to a public STUN server (`stun.cloudflare.com`), sent through the VPN adapter, only while the port reads closed or the client cannot test it, once when the port reads open after reconnects (to confirm the match), and when Diagnostics runs. For ProtonVPN the forward address is asked from its tunnel gateway, the same way NAT-PMP reads it, with the server address its client logs on each connection as the fallback. PIA and Static port do not report a forward address, so the check does not run for them.
 
 - **Pause and Resume Syncing**
   A **Pause Syncing** item in the tray menu temporarily stops sync cycles (including Media Manager imports) without changing any settings. While paused, **Sync Port Now** still runs a single cycle on demand. Syncing always resumes when the application restarts.
@@ -101,17 +104,19 @@ After installing, open **Settings** from the tray icon to configure the applicat
   When a warning or error is logged, a one-shot tray balloon appears; clicking it opens the log viewer at the latest issue. The **Show Logs** item and the tray tooltip show a running warning/error count, which clears when you open the log viewer or clear the logs.
 
 - **Auto-Recovery**
-  After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for a generic NAT-PMP gateway it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Check that the forwarded port is open after each sync**); it fires once and re-arms only when a scheduled check reports the port open again. Use with care on qBittorrent, where an idle client can report closed indefinitely. A **Test** button next to the Auto-recovery settings runs the recovery action on demand (after a confirmation), so the whole chain can be verified before a real failure needs it.
+  After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for NAT-PMP or Static port on an adapter that does not belong to an installed ProtonVPN or PIA it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Check that the forwarded port is open after each sync**); it fires once and re-arms only when a scheduled check reports the port open again, or the VPN provider or adapter changes. Use with care on qBittorrent, where an idle client can report closed indefinitely. A **Test** button next to the Auto-recovery settings runs the recovery action on demand (after a confirmation), so the whole chain can be verified before a real failure needs it.
 
   Recovery is rate-limited while an internet connection cannot be confirmed, since restarting a VPN cannot restore a connection that is down upstream. Reachability is checked by pinging public DNS resolvers; when nothing answers, the first recovery of a streak still runs and later attempts are spaced out to 5, 10 and then 15 minutes until connectivity returns. It is deliberately a rate limit rather than a block: a VPN killswitch also blocks those pings while the tunnel is down, so refusing to recover outright would leave exactly the users who need a restart unable to get one.
 
 - **Post-Update Command**
-  Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
+  Optionally run a custom command after the port is updated, also when restarting the client afterwards failed (fire-and-forget; the status file says so). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **Media Manager**
-  Imports movie and TV episode files into Plex-compatible library folders each cycle, using [TMDB](https://www.themoviedb.org) for titles and years and Plex naming (`Title (Year).ext`, `Show (Year) - SxxExx.ext`, multi-episode `SxxExxExx`) via hardlink (falling back to copy across volumes), copy, or move. Beyond the `SxxExx` pattern, episodes in season subfolders with numbered filenames (`Show/Season N/01-Title.mp4`) are recognised too (English, French, Spanish, and Italian season indicators). It can create Plex subfolders (`Movies/Title (Year)/`, `TV Shows/Show (Year)/Season XX/`) and delete emptied source folders (including `.nfo`-only ones).
+  Imports movie and TV episode files into Plex-compatible library folders each cycle, using [TMDB](https://www.themoviedb.org) for titles and years and Plex naming (`Title (Year).ext`, `Show (Year) - SxxExx.ext`, multi-episode `SxxExxExx`) via hardlink (falling back to copy across volumes), copy, or move. Beyond the `SxxExx` pattern, episodes in season subfolders with numbered filenames (`Show/Season N/01-Title.mp4`) are recognised too (English, French, Spanish, and Italian season indicators). Season 0 (`S00Exx`, or a `Season 00` folder), where Plex and TMDB put a show's specials, is imported like any other season. A movie split into several files (part 1, part 2, ...) is imported as one movie, each part keeping its number (`Title (Year) - cd1.ext`), and subtitle files are imported with their video, named after it, once the video is in the library. It can create Plex subfolders (`Movies/Title (Year)/`, `TV Shows/Show (Year)/Season XX/`) and delete empty subfolders of the source folders (including `.nfo`-only ones).
 
   A dedicated **Media Manager** dialog (tray menu → Media Manager) configures source and library folders, previews imports (**Scan Now**), and applies or corrects them (**Import Now**), highlighting uncertain TMDB matches. A free TMDB API key is required.
+
+  A file counts as already imported when the same file is in the library now, whatever its name there, so a title deleted from the library is imported again on a later cycle while its source file remains. To keep it out, remove or move the source file as well.
 
 - **Tray Icon Interface**
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
@@ -123,10 +128,10 @@ After installing, open **Settings** from the tray icon to configure the applicat
   A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, an auto-recovery line covering both triggers (how close each is to firing, or why it is holding off), forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability (with how long ago it was last checked), the last sync time and result, and an estimate of the next sync. Color accents flag anything out of sync, closed, or in error. A **Recent Port Changes** list shows the latest port assignments, confirmed-closed results, and auto-recovery actions with timestamps, kept across restarts (right-click the list to clear it); port changes note their cause when a network change or a recovery prompted them. A **Statistics** section summarizes stability at a glance: the current port, how many times it changed today, and this session's sync and auto-recovery counts (manual recovery tests are not counted; right-click the section to reset the session counters). The panel refreshes after each cycle and updates its live timers every second. A **Sync Now** button runs an immediate cycle, **Pause/Resume** stops or restarts automatic cycles (the same toggle as the tray menu), **Test Port** checks reachability on demand, and **Run Diagnostics** health-checks the whole chain.
 
 - **Diagnostics**
-  A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, internet connectivity, VPN connection and forwarded port, client running, client plugin *(Nicotine+ only)*, client reachable, ports in sync, interface binding *(qBittorrent and Nicotine+)*, client settings, and outside reachability. The **client plugin** check appears only when Nicotine+ is the selected client and reports what state the bridge plugin is in: not installed, installed but not enabled, installed but never started, out of date, or connected on an address that differs from your saved settings. Those all look identical from the reachability check alone but need different fixes, so the row names which one you have and what to do about it. The **internet connectivity** check reports whether this machine gets a reply when it pings public DNS resolvers, which is what auto-recovery uses to decide whether to attempt a restart immediately or space its attempts out. A warning here does not necessarily mean anything is broken: a network that filters ping, or a VPN killswitch blocking traffic while the tunnel is down, both produce it with the connection otherwise working. It is worth knowing either way: when auto-recovery is enabled this is what spaces out repeat attempts, and Diagnostics is the only place you can check it on demand rather than waiting for a recovery to be held. The **client settings** check looks for options in the client itself that undo the forwarded port - a randomised listening port, or the client's own UPnP/NAT-PMP forwarding. qbPortWeaver switches these off every time it sets the port, so a warning here means one was turned back on since; it names the option as the client's own settings screen labels it. On Transmission and Nicotine+ this is the only check that can see the problem: the client keeps reporting the correct port, so nothing looks wrong until it is next restarted. The same check also runs periodically during normal syncing and raises a tray warning when one of these options is switched on, so it is caught without having to run Diagnostics. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
+  A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, internet connectivity, VPN connection and forwarded port, VPN exit address *(NAT-PMP and ProtonVPN)*, client running, client plugin *(Nicotine+ only)*, client reachable, ports in sync, interface binding *(qBittorrent and Nicotine+)*, client settings, and outside reachability. The **client plugin** check appears only when Nicotine+ is the selected client and reports what state the bridge plugin is in: not installed, installed but not enabled, installed but never started, out of date, or connected on an address that differs from your saved settings. Those all look identical from the reachability check alone but need different fixes, so the row names which one you have and what to do about it. The **internet connectivity** check reports whether this machine gets a reply when it pings public DNS resolvers, which is what auto-recovery uses to decide whether to attempt a restart immediately or space its attempts out. A warning here does not necessarily mean anything is broken: a network that filters ping, or a VPN killswitch blocking traffic while the tunnel is down, both produce it with the connection otherwise working. It is worth knowing either way: when auto-recovery is enabled this is what spaces out repeat attempts, and Diagnostics is the only place you can check it on demand rather than waiting for a recovery to be held. The **client settings** check looks for options in the client itself that undo the forwarded port - a randomised listening port, or the client's own UPnP/NAT-PMP forwarding. qbPortWeaver switches these off every time it sets the port, so a warning here means one was turned back on since; it names the option as the client's own settings screen labels it. On Transmission and Nicotine+ this is the only check that can see the problem: the client keeps reporting the correct port, so nothing looks wrong until it is next restarted. The same check also runs periodically during normal syncing and raises a tray warning when one of these options is switched on, so it is caught without having to run Diagnostics. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
 
 - **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found. A second **Detect** button does the same for the VPN provider, selecting ProtonVPN or PIA when its service is present on the machine. NAT-PMP gateways are not machine-local and so cannot be detected; select **NAT-PMP** yourself if that is what you use.
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, a tab named after the selected client (for example **qBittorrent**), **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found. A second **Detect** button does the same for the VPN provider, selecting ProtonVPN or PIA when its service is present on the machine. NAT-PMP gateways and static ports are not machine-local and so cannot be detected; select **NAT-PMP** or **Static port** yourself if that is what you use.
 
 - **Back Up and Restore Settings**
   **Back Up…** on the Settings dialog saves your configuration to a JSON file, and **Restore…** reads it back, so a reinstall or a move to another PC does not mean setting everything up again by hand. Every setting is included, along with the VPN provider details stored alongside them (service names, adapter names, client process names and the ProtonVPN log path). Passwords, the Nicotine+ token and the TMDB API key are not, because Windows encrypts them to one user account on one machine: a restore leaves those exactly as they were, and tells you to re-enter them if the backup came from elsewhere. Backing up saves the dialog once you have chosen where to put the file, so what you see on screen is what lands in it. A restore replaces your current settings and cannot be undone, so it confirms first. Individual entries this version does not recognise are skipped and counted rather than rejecting the whole file; a backup whose format is newer than this build understands is refused outright, leaving your settings untouched.
@@ -182,7 +187,7 @@ Every option, with its meaning and default, is listed in the **[settings referen
    - During the first 90 seconds after the app starts, if **Wait for VPN on startup** is enabled and the VPN is not yet connected (or has not assigned a port yet), the cycle waits quietly instead: the tray stays neutral, nothing is logged as a failure, the default-port fallback and auto-recovery are held, and the check repeats every 15 seconds (or your update interval, if that is shorter) so the port syncs promptly once the VPN comes up.
    - If **not connected** and **Default port** is 0 (or not a usable port number): skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter. Auto-recovery stops after 3 consecutive attempts that do not produce a forwarded port, and resumes automatically once one is read successfully.
+   - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP or Static port on an adapter that does not belong to an installed ProtonVPN or PIA, cycles the network adapter. Auto-recovery stops after 3 consecutive attempts that do not produce a forwarded port, and resumes automatically once one is read successfully.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). A port outside the usable range (1-65535) is logged as a warning and ignored, and the cycle continues as if no port had been reported. If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
    - If the provider instead reports that port forwarding is *unavailable* rather than simply failing to return a port, no port update is made, the reason is logged once as a warning, and the failed cycle counter is **not** incremented, so auto-recovery never runs for it. Restarting a VPN cannot create a forwarded port that is switched off in the provider's own settings or is not offered by the connected server region. The check repeats on the normal interval, so the port syncs as soon as the condition is corrected. Currently only PIA distinguishes these states (`Inactive` and `Unavailable`); a provider that simply reports no port is treated as an ordinary failure.
 4. Checks if the configured client is running (optionally force-starts it if configured).
@@ -196,10 +201,10 @@ Every option, with its meaning and default, is listed in the **[settings referen
    - Shows a tray balloon tip if **Show notification when port updates** is enabled.
    - Restarts the client if configured.
 8. *(qBittorrent only)* If **Restart qBittorrent if connection status disconnects** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected. After three consecutive restarts that leave it disconnected, further restarts are suspended until it reconnects.
-9. If **Check that the forwarded port is open after each sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until a scheduled check reports the port open again.
+9. If **Check that the forwarded port is open after each sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested by a later check, at least half a sync interval after the first, before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or an adapter cycle for NAT-PMP or Static port on an adapter that does not belong to an installed ProtonVPN or PIA), at most once until a scheduled check reports the port open again or the VPN provider or adapter changes, and only once the port has stayed closed for as long as those checks normally take (and not within 2 minutes of an exit-address reconnect). If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one (see VPN Exit Address Check).
 10. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip. If the port changed this cycle, the optional post-update command is then launched (fire-and-forget) - after the status file is written, so a script that reads it (e.g. `powershell -File "C:\path\to\SampleSendMail.ps1"`) sees this cycle's result rather than the previous one.
-11. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
-12. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+11. Waits for the configured interval before repeating. If a manual sync was triggered, or a network change started the cycle, the wait is shortened to 10 seconds.
+12. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, or the Media Manager window is scanning, importing or clearing the cache, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
 
 ### Tray Menu Options
 
@@ -233,14 +238,14 @@ Every option, with its meaning and default, is listed in the **[settings referen
 
 - Enable **Split Tunneling** and route only your client through the VPN.
 - Enable **Port Forwarding** (required for qbPortWeaver to work).
-- Select a **P2P server**.
-- Use **Proton WireGuard (UDP)** as the protocol, listed under **Proton Protocols** (the new protocol family introduced in ProtonVPN 5.1.5). If you run into connection trouble on it, **OpenVPN (UDP)** is still available as a fallback.
+- Select a **P2P server**, and prefer connecting to one specific server over quick connect. Some P2P servers forward the port on one address but send your traffic out on another, which can change from one connection to the next, so peers are given an address with no forward and the port stays closed whatever you do, until a connection lands on the forwarded address. With `NAT-PMP` or `ProtonVPN` as the provider, qbPortWeaver detects this, names both addresses and reconnects for you (see VPN Exit Address Check).
+- Use **Proton WireGuard (UDP)** as the protocol, listed under **Proton Protocols** (the new protocol family introduced in ProtonVPN 5.1.5). Avoid **OpenVPN** with port forwarding: in testing, most OpenVPN sessions (5 of 6, across three P2P servers) sent traffic out on a different address than the forwarded one (the mismatch described above), while every Proton WireGuard session on the same servers (5 of 5) used the forwarded address. Keep OpenVPN (UDP) only as a fallback if Proton WireGuard cannot connect at all, and check the VPN exit address row in Diagnostics if you do.
 - Set ProtonVPN to **start with Windows**.
 - Set `VPN Provider` to `ProtonVPN` in qbPortWeaver Settings (reads the forwarded port from the ProtonVPN log file).
 
-> **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the NAT-PMP Adapter dropdown. See the NAT-PMP Configuration section below.
+> **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the VPN adapter dropdown. See the NAT-PMP Configuration section below.
 
-> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
+> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, reselect the active adapter wherever you have pinned it - the **VPN adapter** dropdown and your client's **Network Interface** binding.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 
@@ -260,7 +265,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - ProtonVPN supports NAT-PMP natively on P2P servers. You can use this instead of the default log file approach.
 - Enable **Port Forwarding** in ProtonVPN and connect to a P2P server - this enables NAT-PMP on the VPN gateway, which qbPortWeaver queries directly.
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
-- Select the **ProtonVPN virtual adapter** in the NAT-PMP Adapter dropdown.
+- Select the **ProtonVPN virtual adapter** in the VPN adapter dropdown.
 
 > **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port - they share the same mapping rather than competing. qbPortWeaver uses that port to configure the client.
 
@@ -268,11 +273,23 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - The VPN gateway or router must support NAT-PMP (RFC 6886) with port forwarding enabled.
 - Enable **port forwarding** in your VPN client or router settings.
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
-- Select the correct **network adapter** in the NAT-PMP Adapter dropdown - choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
+- Select the correct **network adapter** in the VPN adapter dropdown - choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
 
 > If no adapter appears in the list, ensure the adapter is up and its gateway is responding to NAT-PMP, then click the **⟳** button to refresh without reopening Settings.
 
-### 6. Client Configuration
+### 6. Static Port Configuration
+
+Some VPN providers assign a forwarded port once, from your account on their website, and keep it the same for as long as you have it, with no NAT-PMP or local client to ask. Use **Static port** for those:
+- Create the port forward in your VPN provider's account settings and note the port number.
+- Set `VPN Provider` to `Static port` in qbPortWeaver Settings.
+- Select your VPN's **network adapter** in the VPN adapter dropdown. The list shows every adapter that is currently up and has an IPv4 address, so connect the VPN first.
+- Enter the port in **Forwarded port**.
+
+qbPortWeaver then sets your client to that port whenever the adapter is up, and treats the adapter going down as the VPN disconnecting: the default port fallback, the interface checks, port verification and auto-recovery (an adapter cycle, or a service restart if the adapter belongs to an installed ProtonVPN or PIA) all work as they do for the other providers.
+
+> **Note:** qbPortWeaver cannot know if the provider changes or removes the port. If the port verification check starts reporting the port closed, check the forward in your provider's account and update the port in Settings.
+
+### 7. Client Configuration
 
 #### qBittorrent
 
@@ -307,10 +324,11 @@ plugin. Everything below is a one-off; after it, port sync is fully automatic an
 without restarting Nicotine+.
 
 1. In qbPortWeaver **Settings → General**, set **Client** to **Nicotine+** (or click **Detect**).
-2. Open the **Client** tab - it now shows the Nicotine+ section - and click **Install Plugin**. If
-   Nicotine+ is closed, accept the offer to enable it too - your Nicotine+ configuration is backed
-   up first and only the plugin list is touched. If Nicotine+ is running, enable **qbPortWeaver
-   Bridge** in **Preferences → Plugins**; no restart needed.
+2. Open the **Nicotine+** tab (the client tab is named after the selected client) and click
+   **Install Plugin**. If Nicotine+ is closed, accept the offer to enable it too - your Nicotine+
+   configuration is backed up first and only its plugin settings are changed. If Nicotine+ is
+   running, open **Preferences → Plugins**, make sure plugins are turned on, and enable
+   **qbPortWeaver Bridge**; no restart needed.
 3. Start Nicotine+ if it is not running, then click **⟳** next to the Plugin token. The address and
    token fill in automatically.
 4. Use **Test** to confirm, then save.
@@ -319,18 +337,19 @@ Notes:
 
 - **Do not launch Nicotine+ with `--port`.** That option overrides the configured port for the life
   of the process and nothing can change it - not this plugin, not Nicotine+'s own preferences dialog.
-  qbPortWeaver reports it and stops trying.
+  qbPortWeaver logs the reason once and reports each sync as failed until Nicotine+ is restarted
+  without `--port`.
 - The plugin turns Nicotine+'s own **UPnP** off when it sets the port, so its port mapping cannot
   fight the externally managed one.
 - **Portable installations** work as long as the Executable path is set, which is how qbPortWeaver
   finds the `portable\data` folder beside it.
-- If you run Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work
-  out where to look. Run `/qbpw-connection-file` in Nicotine+ and enter the address and token by
-  hand - both are stable across restarts.
+- If a non-portable Nicotine+ runs under another Windows account, or the plugin's connection file setting points
+  elsewhere, run `/qbpw-connection-file` in a Nicotine+ private chat, open the file it lists, and
+  copy its `url` and `token` into qbPortWeaver's settings - both are stable across restarts.
 - **Enable your VPN client's killswitch.** Nicotine+ can bind to a named adapter, and qbPortWeaver
   warns when that does not match your VPN, but the killswitch is what actually stops a leak.
 
-### 7. qbPortWeaver
+### 8. qbPortWeaver
 
 - Enable **Start Automatically with Windows** from the tray menu.
 - On first run, open **Settings** from the tray menu, select your client and your VPN provider (or click **Detect** on either row to find them automatically), and enter the connection credentials and preferences.
@@ -360,7 +379,7 @@ The application is designed to always recover. A failing cycle never crashes the
 
 ### Media Manager
 
-- If a TMDB API call fails (network error, invalid key), the file is skipped and the error is logged. Other files in the same scan continue processing.
+- If a TMDB API call fails, that file is skipped and the error is logged. When TMDB rejects the API key, or cannot be reached or times out twice in a row, the rest of that run's lookups are skipped with a single warning, and the Media Manager window says so instead of listing the files as having no match; the next run tries again.
 - If a folder is inaccessible (permissions, or a network share that is offline or slow to respond), it is detected quickly without stalling the cycle. A source folder is skipped with a warning while the others are still processed; if a library folder is unreachable, the library index build is skipped that cycle and retried on the next (rather than committing a partial index), resuming automatically once the share is reachable.
 - If file import fails (I/O error, disk full), the individual file is skipped. The scan continues with the next file.
 - If the fingerprint cache is corrupt or unreadable, it is discarded and rebuilt from scratch on the next scan.

@@ -33,6 +33,7 @@ public static class RegistrySettingsManager
     public const string VpnProviderProtonVpn = "ProtonVPN";
     public const string VpnProviderPia = "PIA";
     public const string VpnProviderNatPmp = "NAT-PMP";
+    public const string VpnProviderStaticPort = "Static port";
 
     public const string ClientNameQBittorrent = "qBittorrent";
     public const string ClientNameTransmission = "Transmission";
@@ -50,7 +51,9 @@ public static class RegistrySettingsManager
     // Registry key names - general section
     public const string KeyVpnProvider = "vpnProvider";
     public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
-    public const string KeyNatPmpAdapterName = "natPmpAdapterName";
+    // Shared by NAT-PMP and Static port: both name the adapter the forwarded port belongs to.
+    public const string KeyVpnAdapterName = "vpnAdapterName";
+    public const string KeyStaticPort = "staticPort";
     public const string KeyClient = "client";
 
     // general section (auto-recovery)
@@ -194,7 +197,9 @@ public static class RegistrySettingsManager
             {
                 [KeyVpnProvider] = VpnProviderDisabled,
                 [KeyUpdateIntervalSeconds] = "180",
-                [KeyNatPmpAdapterName] = "",
+                [KeyVpnAdapterName] = "",
+                // 0 = not set; the sync loop and Settings both refuse it for the Static port provider.
+                [KeyStaticPort] = "0",
                 [KeyVpnAutoRecoveryEnabled] = ValueTrue,
                 [KeyVpnAutoRecoveryTriggerCycles] = "3",
                 [KeyClient] = ClientNameQBittorrent,
@@ -249,8 +254,8 @@ public static class RegistrySettingsManager
             [SectionNicotine] = new(StringComparer.OrdinalIgnoreCase)
             {
                 // The URL and token are normally discovered from the bridge plugin's connection
-                // file; these defaults only matter when that file cannot be found (Nicotine+
-                // started with a custom data folder) and the user fills them in by hand.
+                // file; these defaults only matter when that file cannot be found (a non-portable Nicotine+
+                // under another Windows account, or an overridden file path) and the user fills them in by hand.
                 [KeyNicotineUrl] = "http://127.0.0.1:38472",
                 [KeyNicotinePassword] = "",
                 [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
@@ -417,6 +422,8 @@ public static class RegistrySettingsManager
         // (a Soulseek client) made it wrong. Same mechanism as the rest, so it lives in the same
         // table rather than in a migration of its own.
         (SectionGeneral, "bitTorrentClient", KeyClient),
+        // NAT-PMP-specific until the Static port provider started using the same adapter setting.
+        (SectionGeneral, "natPmpAdapterName", KeyVpnAdapterName),
 
         (SectionQBittorrent, "qBittorrentURL",         KeyQBittorrentUrl),
         (SectionQBittorrent, "qBittorrentUserName",    KeyQBittorrentUserName),
@@ -441,7 +448,7 @@ public static class RegistrySettingsManager
         (SectionDeluge, "restartDeluge",     KeyDelugeRestart),
         (SectionDeluge, "forceStartDeluge",  KeyDelugeForceStart),
 
-        // Nicotine+ never shipped, but dev and beta machines carry these from 2.6.4 pre-releases.
+        // These Nicotine+ key names never shipped, but dev and beta machines carry them from 2.6.4 pre-releases.
         (SectionNicotine, "nicotineURL",         KeyNicotineUrl),
         (SectionNicotine, "nicotineToken",       KeyNicotinePassword),
         (SectionNicotine, "nicotineExePath",     KeyNicotineExePath),
@@ -477,7 +484,7 @@ public static class RegistrySettingsManager
     /// app ignores is exactly the confusion this cleanup exists to prevent.
     /// <para>Deliberately an explicit list rather than "delete anything not in <c>_defaults</c>":
     /// the app-level key holds values this class never declares - the installer's shortcut flags,
-    /// the per-session pipe token, the last-seen version - and a blanket sweep would take them with
+    /// the pipe token, the last-seen version - and a blanket sweep would take them with
     /// it. Naming each removal keeps that impossible.</para>
     /// </remarks>
     private static readonly (string Section, string Key)[] _obsoleteKeys =
@@ -620,22 +627,29 @@ public static class RegistrySettingsManager
     /// API keys, tokens) masked as <c>***</c>. Intended for the diagnostics report. Returns an empty
     /// list when the section has no stored values or cannot be read.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Value)> GetSectionSnapshot(string section)
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionSnapshot(string section) =>
+        ReadSortedValues($@"{BaseKeyPath}\{section}", _ => true, MaskSensitiveValue, $"GetSectionSnapshot: [{section}]");
+
+    // Every value stored on one registry key, sorted by name, keeping the names include accepts and
+    // passing each through map. Empty when the key is missing or cannot be read, logged at Debug under
+    // caller. Shared by the two snapshot readers (masked) and the two backup readers (filtered).
+    private static List<(string Key, string Value)> ReadSortedValues(string keyPath, Func<string, bool> include,
+        Func<string, string, string> map, string caller)
     {
         var result = new List<(string Key, string Value)>();
         try
         {
-            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+            using var regKey = Registry.CurrentUser.OpenSubKey(keyPath);
             if (regKey is null) return result;
             foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
             {
-                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
-                result.Add((name, MaskSensitiveValue(name, value)));
+                if (!include(name)) continue;
+                result.Add((name, map(name, regKey.GetValue(name)?.ToString() ?? string.Empty)));
             }
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionSnapshot: [{section}] - {ex.Message}");
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.{caller} - {ex.Message}");
         }
         return result;
     }
@@ -658,25 +672,8 @@ public static class RegistrySettingsManager
     /// <para><see cref="Microsoft.Win32.RegistryKey.GetValueNames"/> returns this key's own values
     /// and not its subkeys, so the settings sections are not duplicated here.</para>
     /// </remarks>
-    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot()
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
-                result.Add((name, MaskSensitiveValue(name, value)));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppSnapshot: {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot() =>
+        ReadSortedValues(AppIdentity.AppRegistryKey, _ => true, MaskSensitiveValue, "GetAppSnapshot");
 
     /// <summary>Every settings section this build knows about, in declaration order.</summary>
     internal static IReadOnlyCollection<string> AllSections => _defaults.Keys;
@@ -705,6 +702,23 @@ public static class RegistrySettingsManager
         _defaults.TryGetValue(section, out var sectionDefaults) && sectionDefaults.ContainsKey(key);
 
     /// <summary>
+    /// Returns the current name of <paramref name="key"/> when it is a former name listed in
+    /// <see cref="_legacyKeys"/> for <paramref name="section"/>, or <paramref name="key"/> unchanged.
+    /// </summary>
+    /// <remarks>Used by settings restore, so a backup written before a rename still restores the value
+    /// under its new name instead of being skipped as unrecognised.</remarks>
+    internal static string ResolveCurrentKey(string section, string key)
+    {
+        foreach (var (legacySection, legacyKey, newKey) in _legacyKeys)
+        {
+            if (legacySection.Equals(section, StringComparison.OrdinalIgnoreCase) &&
+                legacyKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+                return newKey;
+        }
+        return key;
+    }
+
+    /// <summary>
     /// Returns a section's stored values with the non-transferable keys omitted entirely, for writing
     /// to a settings backup. Unlike <see cref="GetSectionSnapshot"/> the values are unmasked, because
     /// a backup has to restore them; the secrets are left out rather than masked, since a <c>***</c>
@@ -723,29 +737,12 @@ public static class RegistrySettingsManager
     /// for a case that only arises when someone has edited the registry by hand. As it stands the
     /// indirection is lost but the path still works, which is the better of the two failures.</para>
     /// </remarks>
-    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section)
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                // Both gates, matching the import side exactly. Without the known-key check the
-                // export is the wider of the two, so a value name this build has no reader for is
-                // written to the file and then reported as "not recognised, skipped" when the same
-                // build reads it back.
-                if (!IsKnownSectionKey(section, name) || !IsTransferableKey(name)) continue;
-                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionForBackup: [{section}] - {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section) =>
+        // Both gates, matching the import side exactly. Without the known-key check the export is the
+        // wider of the two, so a value name this build has no reader for is written to the file and then
+        // reported as "not recognised, skipped" when the same build reads it back.
+        ReadSortedValues($@"{BaseKeyPath}\{section}", name => IsKnownSectionKey(section, name) && IsTransferableKey(name),
+            (_, value) => value, $"GetSectionForBackup: [{section}]");
 
     /// <summary>
     /// Whether an app-level key belongs in a settings backup.
@@ -775,26 +772,10 @@ public static class RegistrySettingsManager
     /// <c>HKCU\Software\qbPortWeaver</c> and are as much a part of a working configuration as the
     /// sections are. Only keys accepted by <see cref="IsBackupAppKey"/> are included.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup()
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                // Subkeys are the sections, enumerated separately; only this key's own values belong here.
-                if (!IsBackupAppKey(name) || !IsTransferableKey(name)) continue;
-                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValuesForBackup: {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup() =>
+        // Subkeys are the sections, enumerated separately; GetValueNames returns only this key's own values.
+        ReadSortedValues(AppIdentity.AppRegistryKey, name => IsBackupAppKey(name) && IsTransferableKey(name),
+            (_, value) => value, "GetAppValuesForBackup");
 
     /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
     public static bool GetBool(string section, string key)
@@ -875,6 +856,7 @@ public static class RegistrySettingsManager
                 try
                 {
                     byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                    LogManager.Instance.ClearLogState($"settings.decrypt.{section}.{key}");
                     return Encoding.UTF8.GetString(decrypted);
                 }
                 catch (CryptographicException ex)
@@ -882,8 +864,10 @@ public static class RegistrySettingsManager
                     // Value parsed as Base64 but DPAPI cannot decrypt it - typically a machine/profile
                     // change (registry restored on a different machine) or DPAPI master key rotation.
                     // Returning the raw Base64 would produce a confusing auth failure; surface the
-                    // underlying cause at Warn so the user can re-enter the value in Settings.
-                    LogManager.Instance.LogMessage(
+                    // underlying cause at Warn so the user can re-enter the value in Settings. Once per
+                    // state, keyed per value: the sync cycle reads it every cycle, and a condition only the
+                    // user can fix would otherwise repeat the Warn and keep raising the badge.
+                    LogManager.Instance.LogStateChange($"settings.decrypt.{section}.{key}",
                         $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings",
                         LogLevel.Warn);
                     return string.Empty;

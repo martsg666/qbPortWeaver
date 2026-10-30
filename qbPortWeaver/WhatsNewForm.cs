@@ -9,6 +9,122 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.0\n\n" +
+        "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +
+        "Testing for this release found that ProtonVPN's OpenVPN connections can forward your port on one " +
+        "address while sending your traffic out on another, so peers are given an address with no forward " +
+        "and the port stays closed whatever you do. On the same servers, every Proton WireGuard connection " +
+        "sent traffic out on the forwarded address and the port was reachable. If you use OpenVPN, switch " +
+        "ProtonVPN to Proton WireGuard (UDP) under Proton Protocols, then reselect the VPN adapter, now " +
+        "named ProTUN, wherever you set it.\n\n" +
+        "Tells you when a VPN sends your traffic out on the wrong address\n" +
+        "With NAT-PMP or ProtonVPN, qbPortWeaver now checks that your traffic leaves from the address the " +
+        "port is forwarded on, when the port reads closed or the client cannot test its port, and names " +
+        "both addresses in the log, the notification, the Status panel and Diagnostics. With port-closed " +
+        "recovery on, it then reconnects the VPN for a new exit address, up to 3 times, and if none " +
+        "matches it asks you to connect to a different server instead of restarting the VPN over and " +
+        "over. On ProtonVPN's OpenVPN protocol the messages also suggest switching to Proton WireGuard. " +
+        "The notification script example and the status file report both addresses too.\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
+        "the port. The network interface checks, the open-port check, auto-recovery and the default " +
+        "port all work as they do with the other providers. The NAT-PMP adapter setting is now called " +
+        "VPN adapter, since both providers use it; your choice is kept.\n\n" +
+        "Changed: clearer status when something needs fixing\n" +
+        "A missing setting, or a default port that could not be applied, now shows the tray red with " +
+        "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +
+        "to see the same reason, and click a warning notification to open the log at the latest warning.\n\n" +
+        "Changed: stricter NAT-PMP checks and better advice\n" +
+        "The network interface check now needs the exact adapter, so a client bound to \"Ethernet\" " +
+        "no longer passes for a VPN on \"Ethernet 2\". Diagnostics gives advice that fits the adapter " +
+        "or gateway instead of telling you to pick a P2P server.\n\n" +
+        "Changed: Nicotine+ says when a new port is not live yet\n" +
+        "The log now says when Nicotine+ saved the port but could not switch over straight away, or " +
+        "may have left an old router mapping in place, and /qbpw-port says so too, including when it " +
+        "turned UPnP off. The plugin's Address setting now accepts an IPv6 address such as ::1.\n\n" +
+        "Changed: latest .NET security update included\n" +
+        "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
+        "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
+        "Fixed: auto-recovery\n" +
+        "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
+        "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
+        "mistaken for ProtonVPN, and a WireGuard tunnel named after ProtonVPN or PIA without their app " +
+        "installed is cycled instead of skipped. An adapter cycle whose disable step hangs re-enables the " +
+        "adapter instead of leaving it disabled. A Windows service that shares its process with others is never " +
+        "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
+        "a recovery that worked no longer shows the warning badge. Port-closed recovery now also waits until " +
+        "the port has stayed closed for as long as its checks normally take, so the quick checks that follow " +
+        "a reconnect no longer restart the VPN while the client is still reconnecting; the Status panel " +
+        "shows it holding rather than a count past its target. Switching VPN provider or adapter also ends " +
+        "a run of recoveries, so the new one is not suspended for restarts it never had, and starts the " +
+        "closed-port checks again, so its first closed check cannot trigger a restart, while port-closed " +
+        "recovery that already ran for the previous one can trigger again. A closed port is " +
+        "confirmed only by a check at least half a sync interval after the first, so the quick re-check after " +
+        "a reconnect no longer reports the client still settling as an outage. A VPN client or service " +
+        "that could not be closed during a recovery is now reported as such, and the fallback ways of " +
+        "closing it are tried, instead of the recovery going on as if it had closed.\n\n" +
+        "Fixed: multi-part movies and subtitles in the Media Manager\n" +
+        "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
+        "are now recognised, also when the parts finish at different times while the earlier parts are still in " +
+        "the source folder, keep their part numbers on Re-match " +
+        "and import into one folder. Import " +
+        "Now brings subtitles along, and every import moves subtitles only with a video it placed. Season 0 " +
+        "episodes, where Plex and TMDB put a show's specials, are now imported too.\n\n" +
+        "Fixed: Media Manager status messages\n" +
+        "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
+        "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
+        "written to the log. When TMDB rejects the API key, or cannot be reached or times out twice in a row, " +
+        "the rest of that run's lookups are skipped with one warning, instead of a warning and a wait for " +
+        "every title, and Scan Now, Re-match and Import Now say so rather than listing the files as unmatched. " +
+        "A network share that drops while it is being scanned is reported as unreadable instead of as already imported.\n\n" +
+        "Fixed: Media Manager scans with other library folders\n" +
+        "Scan Now, Import Now (including its cleanup of empty folders) and Clear Cache wait for the import running on the sync cycle instead of " +
+        "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
+        "no longer forgets what it knew about the configured library, so the next import does not " +
+        "re-read every library file, and closing the Media Manager during a scan no longer leaves the " +
+        "next imports using an out-of-date view of the library. The library is now read while the source " +
+        "folders are listed rather than before, so a scan over network shares finishes sooner. A source folder " +
+        "listed inside another is scanned once with it, and empty-folder cleanup no longer deletes it, nor a library folder kept inside a source folder. Import Now " +
+        "skips a file the sync cycle imported while you were reviewing the scan, instead of adding it to the library a second time.\n\n" +
+        "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
+        "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
+        "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
+        "by mistake. A portable Nicotine+ running under another Windows account is now found. When qbPortWeaver " +
+        "starts Nicotine+ and the plugin comes up on a different port than before, the start is no longer " +
+        "reported as failed. A port change " +
+        "no longer logs Nicotine+ back in after you disconnected it yourself; the new port applies when you " +
+        "connect, and a port check while you have Nicotine+ disconnected no longer counts as a closed port. To get the " +
+        "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
+        "Nicotine+.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "Pausing while a sync is running shows Paused once that sync ends, instead of its result until the next " +
+        "interval, and switching VPN provider or adapter no longer carries the previous one's failed cycles " +
+        "into auto-recovery. An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
+        "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. A port change " +
+        "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
+        "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
+        "The ProtonVPN port is no longer missed for a sync right after ProtonVPN starts a new log file. " +
+        "With NAT-PMP, the default port is now applied when qbPortWeaver starts while the VPN adapter is " +
+        "down, instead of only after the adapter had come up once. " +
+        "Start Automatically shows the real state, the Media Manager keeps the file extension and shows " +
+        "an & in a title as itself, and no longer takes a different file of the same size for one already " +
+        "in the library when a network share cannot be read, nor saves its settings when you click OK during " +
+        "a scan or import and then choose to keep the window open, " +
+        "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
+        "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
+        "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +
+        "now has time to close normally, so a password or other setting changed in it is no longer lost, " +
+        "unless Transmission is set to stay in the notification area when its window closes; the log then " +
+        "says so. A port change whose client restart fails is now still recorded in the port history and " +
+        "notified, and the post-update command still runs, with the failure in the status file. In " +
+        "confirmation dialogs Enter now answers Yes or OK, and No when the action deletes something, and " +
+        "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows. " +
+        "Buttons in message boxes and other small dialogs no longer cut off their text at high display " +
+        "scaling, the Status panel, Diagnostics, Media Manager, log viewer and help windows no longer run past the screen there, Escape closes the log viewer and help from an empty search box (an open drop-down first), and tooltips stay up long enough to read the longer ones. Run Diagnostics greys out in the tray menu and the Status panel while a run is in progress. " +
+        "Diagnostics now warns when the helper service is from a different version than the app. The " +
+        "Nicotine+ plugin moves to a free port only when its port is taken, and otherwise says to check " +
+        "its Address setting. Closing qbPortWeaver during a sync no longer writes errors to the log.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
@@ -28,7 +144,6 @@ public partial class WhatsNewForm : Form
         "With the color theme set to System while Windows was in dark mode, qbPortWeaver could close " +
         "immediately on startup without showing anything. It now starts normally with every theme " +
         "setting.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +
@@ -469,6 +584,9 @@ public partial class WhatsNewForm : Form
         if (ThemeColors.IsDarkModeEnabled())
             lnkCommunity.LinkColor = ThemeColors.LinkDark;
         RenderFeatures();
+        // The first tab stop is a link, and a focused LinkLabel takes Enter, which would open the browser
+        // instead of pressing Close. Focusing it keeps the tab order as laid out.
+        ActiveControl = btnClose;
     }
 
     protected override void OnShown(EventArgs e)

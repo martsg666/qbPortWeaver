@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -57,6 +58,16 @@ internal static class NicotinePluginDiscovery
             || bare.Equals("::1", StringComparison.OrdinalIgnoreCase);
     }
 
+    // 0.0.0.0 and :: are listen addresses (every interface), not ones Windows can connect to. The
+    // connection file is only read on the plugin's own machine, so reach it through the loopback of
+    // the same family, which a wildcard listener accepts.
+    private static string ConnectHost(string host) => host.Trim('[', ']') switch
+    {
+        "0.0.0.0" => "127.0.0.1",
+        "::" => "::1",
+        _ => host
+    };
+
     /// <summary>Renders <paramref name="host"/> for use in a URL, bracketing an IPv6 literal.</summary>
     /// <remarks>A host containing a colon can only be an IPv6 address - neither a host name nor an
     /// IPv4 address may contain one - and RFC 3986 requires those to be bracketed in an authority.
@@ -82,8 +93,8 @@ internal static class NicotinePluginDiscovery
     /// Resolves Nicotine+'s data folder, or <see langword="null"/> if it cannot be found.
     /// <para>Checks for a portable layout beside the executable before the roaming default,
     /// matching the order Nicotine+ itself uses. A data folder chosen with Nicotine+'s
-    /// <c>-c</c>/<c>--user-data</c> options cannot be discovered from outside the process;
-    /// those users enter the address and token manually.</para>
+    /// <c>-c</c>/<c>--user-data</c> options cannot be discovered from outside the process; the
+    /// connection file in qbPortWeaver's own folder still covers those users.</para>
     /// </summary>
     internal static string? ResolveDataFolder(string? exePathHint)
     {
@@ -245,13 +256,15 @@ internal static class NicotinePluginDiscovery
             // It is therefore reported rather than refused. Refusing bought no safety: the same remote
             // address can be typed into Settings by hand, reaching an identical setup, so discarding
             // the file only blocked the convenient path to a configuration the app still permits - and
-            // said so at Debug, where nobody would see it. A Warn names the real cost instead.
+            // said so at Debug, where nobody would see it. A Warn names the real cost instead. The file
+            // is only ever read on the machine the plugin runs on, so the cost is not this app's own
+            // traffic but that other machines can reach the bridge.
             if (!IsLoopbackHost(host))
             {
                 LogManager.Instance.LogStateChange(NonLoopbackHostStateKey,
-                    $"The Nicotine+ bridge is published on '{host}', which is not this machine. The access " +
-                    "token and every request to it cross the network unencrypted - use this only on a " +
-                    "network you trust, or set the plugin's Address back to 127.0.0.1.",
+                    $"The Nicotine+ bridge listens on '{host}', so other machines on the network can reach it, " +
+                    "and its access token travels unencrypted when they do. Set the plugin's Address back " +
+                    "to 127.0.0.1 unless qbPortWeaver runs on another machine.",
                     LogLevel.Warn);
             }
             else
@@ -259,7 +272,7 @@ internal static class NicotinePluginDiscovery
                 LogManager.Instance.ClearLogState(NonLoopbackHostStateKey);
             }
 
-            return new NicotinePluginHandshake($"http://{FormatHostForUrl(host)}:{port}", token, path); // NOSONAR S5332 - loopback by default (warned above when not); TLS is meaningless for a local-only handshake
+            return new NicotinePluginHandshake($"http://{FormatHostForUrl(ConnectHost(host))}:{port}", token, path); // NOSONAR S5332 - loopback by default (warned above when not); TLS is meaningless for a local-only handshake
         }
         catch (Exception ex)
         {
@@ -280,6 +293,13 @@ internal static class NicotinePluginDiscovery
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return false;
+        }
+        // A process that exists but cannot be opened (another account's Nicotine+, the cross-account
+        // portable setup handshake.py describes) is treated as alive: GetProcessById already proved
+        // the pid is in use, and the bearer token remains the guard against an unrelated listener.
+        catch (Win32Exception)
+        {
+            return true;
         }
     }
 

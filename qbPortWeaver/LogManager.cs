@@ -18,16 +18,6 @@ public sealed class LogManager
     private const int MaxLogFiles = 5;   // Keep only 5 logfiles total (including current)
     private const int RotationCheckInterval = 100; // Check rotation every N writes
 
-    // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3).
-    // Labels come from Shared.LoggingConstants so the helper service uses the same strings.
-    private static readonly string[] _levelLabels =
-    [
-        LoggingConstants.LevelInfoLabel,
-        LoggingConstants.LevelWarnLabel,
-        LoggingConstants.LevelErrorLabel,
-        LoggingConstants.LevelDebugLabel,
-    ];
-
     // Static instance for global access - null until Initialize() is called
     private static LogManager? _instance;
 
@@ -65,7 +55,7 @@ public sealed class LogManager
 
     private volatile bool _debugMode;
 
-    /// <summary>When <see langword="true"/>, <see cref="LogDebug"/> writes entries; when <see langword="false"/>, debug calls are no-ops.</summary>
+    /// <summary>When <see langword="true"/>, Debug-level entries are written; when <see langword="false"/>, they are not, whichever method logs them.</summary>
     public bool DebugMode
     {
         get => _debugMode;
@@ -104,6 +94,11 @@ public sealed class LogManager
     /// and later failed writes as successes.</para></remarks>
     public bool LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
+        // The debug toggle is enforced here rather than only in LogDebug: callers that pass a level
+        // through (LogHttpException for best-effort reads, the clients' failure-level parameters) would
+        // otherwise write Debug entries with debug logging off.
+        if (level == LogLevel.Debug && !DebugMode) return false;
+
         bool shouldNotify = false;
         bool writeFailed = false;
         bool wrote = false;
@@ -307,7 +302,7 @@ public sealed class LogManager
     }
 
     private static string FormatEntry(string message, LogLevel level, string subsystem) =>
-        LoggingConstants.FormatLogEntry(DateTime.Now, _levelLabels[(int)level], subsystem, message);
+        LoggingConstants.FormatLogEntry(DateTime.Now, LoggingConstants.LabelFor(level), subsystem, message);
 
     // Appends text to the log file. Must be called while holding _lock.
     // Opens a new stream per call intentionally - no persistent stream to manage across threads or rotation events.

@@ -71,6 +71,7 @@ internal sealed class TimeRangeForm : Form
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);
+        DialogLayout.EndDialogLayout(this);
     }
 
     // Vertical margin on each field; applied to both neighbours, so this is half the row gap. Set to
@@ -83,15 +84,18 @@ internal sealed class TimeRangeForm : Form
     // dialog past what its contents need and reads as oversized margins next to the other dialogs.
     private const int CaptionPadding = 24;
 
+    // Room a field needs beside its text: the border and the caret's margin on each side.
+    private const int FieldTextPadding = 10;
+
     /// <summary>
     /// Widens the dialog when its caption is longer than its contents, which are only two short
     /// fields. The title bar takes no part in layout, so an auto-sized form is free to end up
     /// narrower than its own title and render it truncated.
     /// <para>Measured rather than hard-coded, because the caption is drawn in the system caption
     /// font rather than the form font, so it does not follow the form's own font scaling. Applied
-    /// here rather than in the constructor so it lands after <see cref="AutoScaleMode.Font"/>
-    /// scaling has run, which would otherwise scale an already-correct pixel width a second
-    /// time.</para>
+    /// here, after the constructor's <see cref="DialogLayout.EndDialogLayout"/>, so it lands after
+    /// <see cref="AutoScaleMode.Font"/> scaling has run, which would otherwise scale an already-correct
+    /// pixel width a second time.</para>
     /// </summary>
     protected override void OnLoad(EventArgs e)
     {
@@ -101,10 +105,15 @@ internal sealed class TimeRangeForm : Form
         int chrome = SystemInformation.SmallIconSize.Width              // window icon
                    + SystemInformation.CaptionButtonSize.Width          // close button
                    + (SystemInformation.FixedFrameBorderSize.Width * 2)
-                   + CaptionPadding;
+                   + LogicalToDeviceUnits(CaptionPadding);
 
         MinimumSize = new Size(caption + chrome, 0);
-        CenterToParent();   // re-centre: the width above is applied after the initial placement
+        // Each field at least as wide as its timestamp: the column is shared out from what the button row
+        // leaves, which at some font sizes was narrower than the text. Measured here for the same reason as
+        // the caption, after the scaling.
+        foreach (var field in new[] { _from, _to })
+            field.MinimumSize = new Size(TextRenderer.MeasureText(field.Text, field.Font).Width + LogicalToDeviceUnits(FieldTextPadding), 0);
+        CenterToParent();   // re-centre: the widths above are applied after the initial placement
     }
 
     // Right-anchored so the two colons line up down the column. Anchoring without Top or Bottom
@@ -151,7 +160,7 @@ internal sealed class TimeRangeForm : Form
         Text = value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture),
         BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app
         ForeColor = SystemColors.WindowText,
-        Width = 170,                // floor only: the anchor below stretches the field past this
+        Width = 170,                // starting width only: the column sets the final one, floored at the text in OnLoad
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(0, RowSpacing, 0, RowSpacing),
     };

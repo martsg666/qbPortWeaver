@@ -9,6 +9,7 @@ import hmac
 import json
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from bridge import errors
@@ -29,11 +30,12 @@ SERVE_POLL_SECONDS = 0.2
 SHUTDOWN_JOIN_SECONDS = 5.0
 
 # Two audiences, and the README's endpoint table records which is which per route. qbPortWeaver
-# consumes GET /v1/preferences, POST /v1/port, GET /v1/status and POST /v1/porttest. The rest -
-# GET /, the GET aliases of /v1/port and /v1/porttest, and POST /v1/reconnect - exist for manual
-# diagnosis and are deliberately not called by the app. Reading the code alone they look like dead
-# surface, which is the same shape as the genuinely dead `port_test` capability removed in 2.6.4,
-# so check the README table before concluding a route is unused.
+# consumes GET /v1/preferences, POST /v1/port and POST /v1/porttest. The rest - GET /, GET
+# /v1/status, GET /v1/port (an alias of /v1/preferences), GET /v1/porttest (the last verdict),
+# and POST /v1/reconnect - exist for manual diagnosis and are deliberately not called by the app.
+# Reading the code alone they look like dead surface, which is the same shape as the genuinely dead
+# `port_test` capability removed in 2.6.4, so check the README table before concluding a route is
+# unused.
 PATH_ROOT = "/"
 PATH_PREFERENCES = "/v1/preferences"
 PATH_PORT = "/v1/port"
@@ -56,6 +58,12 @@ class BridgeHTTPServer(ThreadingHTTPServer):
         # The default implementation prints a traceback to stderr, which goes nowhere useful
         # in the windowed Windows build. Failures are already reported per-request.
         pass
+
+
+class BridgeHTTPServer6(BridgeHTTPServer):
+    """The same server on an IPv6 socket, for a bind address such as ::1."""
+
+    address_family = socket.AF_INET6
 
 
 class BridgeHandler(BaseHTTPRequestHandler):
@@ -100,7 +108,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._respond(status, payload)
 
         except errors.ApiError as error:
-            self._respond(error.status, error.payload())
+            # Closed after an error: a request rejected before its body was read (401, 404, an
+            # oversized body) leaves that body on the connection, and a keep-alive client would have
+            # its next request parsed from it.
+            self._respond(error.status, error.payload(), close=True)
         except (ConnectionError, socket.timeout):
             # Client hung up mid-response; nothing useful left to say.
             pass
@@ -109,7 +120,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 bridge.log_debug(f"Unhandled error serving {method} {self.path}: {error!r}")
             try:
                 self._respond(500, {"ok": False,
-                                    "error": {"code": "internal_error", "message": str(error)}})
+                                    "error": {"code": "internal_error", "message": str(error)}},
+                              close=True)
             except (ConnectionError, socket.timeout):
                 pass
 
@@ -170,7 +182,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if self.headers.get("Origin"):
             raise errors.forbidden_origin()
 
-        host = (self.headers.get("Host") or "").split(":", 1)[0].strip("[]")
+        # A bracketed IPv6 authority ("[::1]:38472") holds colons of its own, so take what is inside the
+        # brackets; anything else is host[:port].
+        raw = self.headers.get("Host") or ""
+        host = raw[1:raw.find("]")] if raw.startswith("[") and "]" in raw else raw.split(":", 1)[0]
         if _is_loopback_host(bridge.bind_host) and host and not _is_loopback_host(host):
             raise errors.forbidden_origin()
 
@@ -211,13 +226,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
             raise errors.bad_request("Request body must be a JSON object.")
         return payload
 
-    def _respond(self, status, payload):
+    def _respond(self, status, payload, close=False):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if close:
+            # BaseHTTPRequestHandler.send_header also sets close_connection on this header, so the
+            # client is told and the server drops the connection after this reply.
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -244,7 +263,11 @@ class Bridge:
 
         self._set_port_lock = threading.Lock()
 
-        self._server = BridgeHTTPServer((bind_host, bind_port), BridgeHandler)
+        # The address setting accepts IPv6 too (::1, with or without brackets), which needs its own
+        # socket family: the IPv4 server would fail to bind it and the plugin would not start.
+        host = (bind_host or "").strip("[]")
+        server_class = BridgeHTTPServer6 if ":" in host else BridgeHTTPServer
+        self._server = server_class((host, bind_port), BridgeHandler)
         self._server.bridge = self
         # Bounds accept() itself; the per-connection deadline is BridgeHandler.timeout.
         self._server.timeout = ACCEPT_POLL_SECONDS
@@ -332,19 +355,20 @@ class Bridge:
         return self.proxy.call(self.core_io.reconnect, timeout=MainThreadProxy.WRITE_TIMEOUT)
 
     def run_port_test(self, body):
+        started = time.monotonic()   # the effective-port read below comes out of the wait, not on top of it
         port = _optional_port(body)
         if port is None:
             port = self.proxy.call(self._effective_port, timeout=MainThreadProxy.READ_TIMEOUT)
         wait_ms = body.get("wait_ms", 8000)
         if not isinstance(wait_ms, int) or isinstance(wait_ms, bool) or wait_ms < 0:
             raise errors.bad_request("'wait_ms' must be a non-negative integer.")
-        return self.port_test.request(port, wait_ms / 1000.0)
+        return self.port_test.request(port, wait_ms / 1000.0, started=started)
 
     def peek_port_test(self):
         return self.port_test.peek()
 
     def _effective_port(self):
-        return self.core_io.active_port() or self.core_io.configured_port()
+        return self.core_io.effective_port()
 
 
 def _require_port(body):

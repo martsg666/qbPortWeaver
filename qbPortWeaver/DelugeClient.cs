@@ -50,7 +50,7 @@ public sealed class DelugeClient : ManagedClientBase
 
             // Surface RPC-level errors (e.g. "Not Authenticated", "No daemon connected") with the
             // actual server message before falling through to the generic result-missing path.
-            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
+            if (TryGetRpcError(root, out var errorElement))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.get_config_values: {errorElement}", LogLevel.Error);
                 return (null, null);
@@ -65,7 +65,7 @@ public sealed class DelugeClient : ManagedClientBase
             int? listenPort = ParseListenPort(resultElement);
 
             if (listenPort is null)
-                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen_ports not parsed in RPC response");
+                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response (listen_ports, or listen_random_port while random_port is on and none is picked yet)");
 
             string? bindAddress = resultElement.GetStringOrNull("listen_interface");
 
@@ -93,15 +93,14 @@ public sealed class DelugeClient : ManagedClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                LogSetPortHttpFailure(response);
                 return false;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
             // Deluge returns {"result":null,"error":null,"id":N} on success
-            if (doc.RootElement.TryGetProperty(JsonPropError, out var errorElement) &&
-                errorElement.ValueKind != JsonValueKind.Null)
+            if (TryGetRpcError(doc.RootElement, out var errorElement))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.set_config: {errorElement}", LogLevel.Error);
                 return false;
@@ -122,10 +121,11 @@ public sealed class DelugeClient : ManagedClientBase
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
     /// <inheritdoc/>
-    /// <remarks>Uses <c>core.test_listen_port</c>, which actively probes the port via Deluge's
-    /// online port-check service. A null RPC result means the daemon could not determine it
-    /// (e.g. check service unreachable). Failures log at Debug only - this is a best-effort
-    /// probe and the orchestrator treats null as "undeterminable".</remarks>
+    /// <remarks>Uses <c>core.test_listen_port</c>, which asks Deluge's online port-check service to
+    /// probe the port. That service filters automated requests, so in practice this normally returns
+    /// a null RPC result, meaning the daemon could not determine it; the sync loop then still runs the
+    /// VPN exit address check. Failures log at Debug only - this is a best-effort probe and the
+    /// orchestrator treats null as "undeterminable".</remarks>
     public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
@@ -138,7 +138,7 @@ public sealed class DelugeClient : ManagedClientBase
             if (doc is null) return null;
             var root = doc.RootElement;
 
-            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
+            if (TryGetRpcError(root, out var errorElement))
             {
                 LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: RPC returned an error: {errorElement}");
                 return null;
@@ -162,8 +162,10 @@ public sealed class DelugeClient : ManagedClientBase
     /// <inheritdoc/>
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        // Every null exit below is logged: Diagnostics reports an unread check as Skip and tells the
-        // user to consult the log, so a silent return would send them somewhere empty.
+        // Every null exit below is logged, at Debug: Diagnostics reports an unread check as Skip and
+        // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+        // than Warn because the sync cycle also runs this every few cycles, and a persistent failure
+        // here would otherwise badge the tray each time for an advisory check.
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false))
         {
             LogManager.Instance.LogDebug("DelugeClient.GetConflictingSettingsAsync: not authenticated");
@@ -181,7 +183,7 @@ public sealed class DelugeClient : ManagedClientBase
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
             var root = doc.RootElement;
-            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
+            if (TryGetRpcError(root, out var errorElement))
             {
                 LogManager.Instance.LogDebug($"DelugeClient.GetConflictingSettingsAsync: RPC returned an error: {errorElement}");
                 return null;
@@ -204,7 +206,7 @@ public sealed class DelugeClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }
@@ -237,7 +239,7 @@ public sealed class DelugeClient : ManagedClientBase
             // Any non-null error object lands here, not only credential failures - keep the hint
             // soft and let the raw server error carry the diagnosis. The definitive wrong-password
             // case is the result:false branch below (Deluge returns false, not an error, for that).
-            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
+            if (TryGetRpcError(root, out var errorElement))
             {
                 LogManager.Instance.LogMessage($"{ClientName} authentication failed: {errorElement} - check the password in Settings and that the Web UI is running", LogLevel.Error);
                 return false;
@@ -279,9 +281,9 @@ public sealed class DelugeClient : ManagedClientBase
         bool randomPort = resultElement.TryGetProperty("random_port", out var randomPortElement) &&
                           randomPortElement.ValueKind == JsonValueKind.True;
 
-        // listen_random_port is null until the daemon has actually picked one, and Deluge writes it
-        // back to null whenever random_port is turned off - so the null case here is its ordinary
-        // resting state, not a malformed response.
+        // listen_random_port is null until the daemon has actually picked one, and once picked it is kept
+        // after random_port is turned off (measured), which is why it is read only while random_port is on.
+        // So a null here is a daemon that has not picked one yet, not a malformed response.
         if (randomPort)
             return resultElement.GetInt32OrNull("listen_random_port");
 
@@ -292,4 +294,9 @@ public sealed class DelugeClient : ManagedClientBase
 
         return null;
     }
+
+    // Deluge reports an RPC failure as a non-null "error" ({"result":null,"error":null,"id":N} is a
+    // success). One rule for every call, so no site can loosen it on its own.
+    private static bool TryGetRpcError(JsonElement root, out JsonElement error) =>
+        root.TryGetProperty(JsonPropError, out error) && error.ValueKind != JsonValueKind.Null;
 }

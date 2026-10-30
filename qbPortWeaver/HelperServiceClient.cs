@@ -12,7 +12,7 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
 {
     // Helper unreachable, target invalid, session token unavailable, or response unparseable.
     public static HelperResult Failed => default; // Completed=false, IsRejected=false
-    // Helper actively rejected the command (session token mismatch).
+    // Helper actively rejected the command (session token mismatch, or the caller could not be verified).
     public static HelperResult Rejected => new(Completed: false, WarnCount: 0, ErrorCount: 0, IsRejected: true);
     // Helper processed the command and returned its WARN/ERROR counts. ProtocolVersion is 0 when the
     // response carried no version key, which means a helper built before versioning existed - the
@@ -38,7 +38,13 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
     {
         if (IsRejected)
         {
-            LogManager.Instance.LogMessage("Helper service rejected the command - session token mismatch", LogLevel.Warn);
+            // One "rejected" reply covers a token mismatch, a failed impersonation and an underivable log
+            // path, so this line names only what all three share; the helper logs which one it was, as its
+            // own entry in the Windows Application event log under the source qbPortWeaver.HelperService.
+            LogManager.Instance.LogMessage(
+                "Helper service rejected the command - the session token did not match or the helper could not " +
+                "verify the calling user (the helper's reason is in the Windows Application event log, source qbPortWeaver.HelperService)",
+                LogLevel.Warn);
             return;
         }
         ReportProtocolVersion();
@@ -90,8 +96,10 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
 internal static class HelperServiceClient
 {
     private const int PipeConnectTimeoutMs = 5000;
-    // Bound for awaiting the helper's response. Covers the helper's pathological
-    // restart path (stop ~45s + 5s pause + start ~30s = ~80s) with headroom. The
+    // Bound for awaiting the helper's response. Covers the helper's pathological restart path - the
+    // SCM stop, the escalating force-kill, the pause, the start and the post-start verification, each
+    // running to its own timeout - which adds up to roughly 100-115s, so the headroom is small: the
+    // helper's AutoRecovery constants are the other half of this sum and carry the same warning. The
     // helper writes its response only after the action completes. (Named distinctly from
     // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
     private const int ResponseTimeoutMs = 120_000;
@@ -155,7 +163,7 @@ internal static class HelperServiceClient
             await writer.WriteLineAsync($"{action}|{target}|{sessionToken}".AsMemory(), cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
 
-            return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false));
+            return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false), action);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -193,7 +201,12 @@ internal static class HelperServiceClient
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         try
         {
-            return await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            string? line = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            // The helper closed the pipe without a result - stopped mid-action, or crashed. Logged here
+            // because the caller's follow-up line refers back to "the prior log entry".
+            if (line is null)
+                LogManager.Instance.LogMessage($"Helper service closed the connection without a result for '{action}' request", LogLevel.Warn);
+            return line;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -203,12 +216,14 @@ internal static class HelperServiceClient
     }
 
     // Parses "warn=N|error=M" from the helper. Returns Failed if the line is missing or malformed.
-    // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
+    // Returns Rejected if the helper sent the rejected sentinel (session token mismatch, or the caller could not be verified).
     // Requires at least one recognised key to parse so future protocol garble does not silently
     // succeed as Ok(0, 0).
-    private static HelperResult ParseResult(string? response)
+    // A null response was already logged where it was read (timeout or closed pipe); an empty or
+    // unrecognised one is logged here, so every Failed result has a line the caller can refer to.
+    private static HelperResult ParseResult(string? response, string action)
     {
-        if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
+        if (response is null) return HelperResult.Failed;
         if (response == HelperProtocol.ResultRejectedSentinel) return HelperResult.Rejected;
 
         int warn = 0, error = 0, protocolVersion = 0;
@@ -223,6 +238,9 @@ internal static class HelperServiceClient
             // result, and treating it as one would report a completed action that never ran.
             else if (kv[0] == HelperProtocol.ResultVersionKey) protocolVersion = value;
         }
-        return anyKeyParsed ? HelperResult.Ok(warn, error, protocolVersion) : HelperResult.Failed;
+        if (anyKeyParsed) return HelperResult.Ok(warn, error, protocolVersion);
+
+        LogManager.Instance.LogMessage($"Helper service returned an unreadable result for '{action}' request", LogLevel.Warn);
+        return HelperResult.Failed;
     }
 }

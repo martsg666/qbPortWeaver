@@ -80,9 +80,11 @@ jobs:
           dotnet-version: '10.x'
 
       # Installed in its own step so the global-tools path is on PATH for the analyze step.
+      # Pinned like every other tool here: the next step runs it with SONAR_TOKEN, so an
+      # unreviewed release must not be picked up silently. Bump deliberately.
       - name: Install SonarScanner for .NET
         shell: pwsh
-        run: dotnet tool install --global dotnet-sonarscanner
+        run: dotnet tool install --global dotnet-sonarscanner --version 12.0.0
 
       # -----------------------------------------------------------------------
       # 3. Run the analysis around the real build so MSBuild settings are honoured
@@ -109,7 +111,7 @@ jobs:
           # Deliberately no /warnaserror here: this build only feeds the scanner. A build that
           # fails on a warning would skip the "end" step below and upload no analysis at all -
           # losing the report exactly when it is most useful. Warning enforcement lives in
-          # build.yml (every PR and non-tag push) and build-release.yml (every tag), so a
+          # build.yml (every PR, and pushes to master and 2.*) and build-release.yml (every tag), so a
           # warning still cannot reach a release.
           dotnet build qbPortWeaver.slnx --configuration Release
 

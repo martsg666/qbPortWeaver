@@ -66,6 +66,8 @@ partial class StatusForm
         grpHistory.SuspendLayout();
         grpStats.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblAutoRecoveryLabel);
         grpStatus.Controls.Add(lblAutoRecoveryValue);
@@ -202,10 +204,10 @@ partial class StatusForm
         lblAutoRecoveryValue.TabIndex = 17;
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
-        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Every value this
-        // row produces fits 384px today (the longest, "Holding - cannot confirm internet, retry in
-        // ~15m", is ~315px), but the countdown that would be cut first sits at the end, and a longer
-        // duration or a larger system font could still reach the edge.
+        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Values are kept to
+        // fit 384px with room to spare, and the exit-address states are deliberately short, with their
+        // addresses and advice in the tooltip. A larger system font could still reach the edge, and the
+        // tooltip carries the full text when it does.
         lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
@@ -220,7 +222,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 350; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
+        colHistoryEvent.Width = 350; // starting width; set at runtime to fill the list beside Time + Port, grown to the longest entry on populate (StatusForm.EventColumnMinWidth)
         // Window (input surface), not the Control chrome: this is an embedded data panel inside a
         // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
         // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.
@@ -289,7 +291,7 @@ partial class StatusForm
         lblSyncsLabel.TabIndex = 4;
         lblSyncsLabel.Text = "Syncs (session):";
         lblSyncsLabel.TextAlign = ContentAlignment.MiddleLeft;
-        // AutoEllipsis: after very long sessions the value ("10080 (10079 OK)") can outgrow the
+        // AutoEllipsis: after very long sessions the value ("10080 (12 failed)") can outgrow the
         // column; an ellipsis beats silent clipping.
         lblSyncsValue.AutoEllipsis = true;
         lblSyncsValue.Location = new Point(148, 53);
@@ -323,8 +325,9 @@ partial class StatusForm
         lblMonitoringSinceValue.Text = "-";
         lblMonitoringSinceValue.TextAlign = ContentAlignment.MiddleLeft;
         // Discrete clear option - right-click the Statistics group (mirrors the history list's
-        // context menu). Session counters only: the history-derived figures (port held, changes
-        // today) are cleared through the history list's own Clear History. The menu is also
+        // context menu). Session counters only: the history-derived figure (changes today) is cleared
+        // through the history list's own Clear History, and the current port is read live from the
+        // client, so neither is a counter to reset. The menu is also
         // attached to every child label in the constructor (AttachStatsContextMenu), since
         // ContextMenuStrip does not propagate from a container to its children.
         ctxClearStats.Text = "Clear Statistics";

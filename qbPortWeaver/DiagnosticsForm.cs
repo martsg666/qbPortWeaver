@@ -5,8 +5,10 @@ namespace qbPortWeaver;
 /// <summary>
 /// Read-only results dialog for a <see cref="DiagnosticsService"/> run: a color-coded checklist with a
 /// per-check detail line and fix hint, a point-in-time timestamp, a Re-run button that refreshes the
-/// report in place, and a Copy Report button that yields a plain-text version for pasting into a bug
-/// report. Built in code (no designer) because its content is entirely dynamic.
+/// report in place, a Copy Report button that yields a plain-text version for pasting into a bug
+/// report, and a Save Support Bundle button that saves the report with the logs, the masked settings,
+/// the status file and the port history. Built in code (no designer) because its content is entirely
+/// dynamic.
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {
@@ -41,6 +43,8 @@ internal sealed class DiagnosticsForm : Form
 
         BuildControls();
         RenderReport();
+        // Scaling first: SizeToContent works from the rendered font height, already in device pixels.
+        DialogLayout.EndDialogLayout(this);
         SizeToContent();
     }
 
@@ -89,13 +93,14 @@ internal sealed class DiagnosticsForm : Form
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             BackColor = SystemColors.Control,
-            TabStop = false,
+            // Reachable by Tab so the keyboard can scroll a long report; Close keeps the first focus.
+            TabStop = true,
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
         };
         root.Controls.Add(_report, 0, 0);
 
-        // Button bar: Copy Report + Re-run grouped on the left, Close on the right.
+        // Button bar: Copy Report, Save Support Bundle and Re-run grouped on the left, Close on the right.
         var buttonBar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -149,6 +154,9 @@ internal sealed class DiagnosticsForm : Form
         CancelButton = btnClose;
 
         Controls.Add(root);
+        // Enter clicks the focused button, and Copy Report would otherwise take the first focus. After
+        // Controls.Add: ActiveControl throws for a control that is not yet inside the form.
+        ActiveControl = btnClose;
     }
 
     // Renders the checklist with color runs: a summary line, a timestamp, then per-check a bold colored
@@ -216,10 +224,11 @@ internal sealed class DiagnosticsForm : Form
     }
 
     // Sizes this fixed dialog to fit the rendered report plus the button row, so the shortest
-    // report (a client with neither an interface-binding row nor a plugin row) leaves no dead space
-    // and the fullest one (Nicotine+, which has both) still fits without scrolling. Capped so a
-    // report with many fix hints scrolls rather than growing off-screen. Runs once at construction;
-    // a Re-run keeps the size and scrolls if taller.
+    // report (a client with neither an interface-binding row nor a plugin row) leaves no dead space.
+    // The fullest one - Nicotine+ (interface-binding and plugin rows) on NAT-PMP or ProtonVPN (the VPN
+    // exit address row), with fix hints - reaches the cap and scrolls. Capped so a report with many
+    // fix hints scrolls rather than growing off-screen. Runs once at construction; a Re-run keeps the
+    // size and scrolls if taller.
     private void SizeToContent()
     {
         int lineHeight = _report.Font.Height;
@@ -233,10 +242,18 @@ internal sealed class DiagnosticsForm : Form
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
-        const int reportTop = 8;    // _report.Location.Y
-        const int buttonArea = 44;  // report bottom to form bottom: 8px gap + 28px button + 8px margin
+        // Layout units, scaled by the same factor the font scaling used (the current font's measure against the
+        // designer baseline ApplyDialogChrome sets, 15 at 100%), since this runs after the scaling.
+        double scale = CurrentAutoScaleDimensions.Height / 15.0;
+        int reportTop = (int)Math.Round(8 * scale);    // _report.Location.Y
+        int buttonArea = (int)Math.Round(44 * scale);  // report bottom to form bottom: 8px gap + 28px button + 8px margin
         int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
-        int height = Math.Min(reportTop + reportHeight + buttonArea, 760);
+        // Capped by the screen as well: the scaled cap alone passes a 1080p working area at 125% and 150%,
+        // which would put the button row behind the taskbar. The screen the dialog opens on (CenterScreen
+        // places it on the one holding the cursor).
+        int frame = Height - ClientSize.Height;
+        int screenCap = Screen.FromPoint(Cursor.Position).WorkingArea.Height - frame;
+        int height = Math.Min(reportTop + reportHeight + buttonArea, Math.Min((int)Math.Round(760 * scale), screenCap));
         ClientSize = new Size(ClientSize.Width, height);
     }
 

@@ -38,11 +38,11 @@ internal static class AutoRecoveryManager
         restartResult.RaiseLogAlerts();
 
         // Only restart the VPN client app if the helper actually completed the service restart.
-        // If the helper was unreachable, rejected the request, or reported errors, killing the
+        // If the helper did not complete the request, rejected it, or reported errors, killing the
         // VPN client UI alone does not fix the underlying VPN service - it just closes the user's
         // VPN client window for nothing.
         // The lower layer (HelperServiceClient / RaiseLogAlerts) already logged the specific cause
-        // for unreachable / rejected; this line communicates the consequence (skipping the client
+        // for incomplete / rejected; this line communicates the consequence (skipping the client
         // restart) with a reason tailored to each failure mode so the two log lines do not look
         // like duplicates.
         if (!restartResult.Completed || restartResult.ErrorCount > 0)
@@ -51,15 +51,23 @@ internal static class AutoRecoveryManager
             if (restartResult.IsRejected)
                 reason = "helper service rejected the command (see prior log entry)";
             else if (!restartResult.Completed)
-                reason = "helper service was unreachable (see prior log entry)";
+                // Not "unreachable": the helper may have been reached and then timed out, closed the
+                // pipe or sent an unreadable reply, or the request was never sent. The prior line says which.
+                reason = "helper service did not complete the request (see prior log entry)";
             else
                 reason = $"helper service reported {TextFormat.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
             LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);
             return;
         }
 
-        await RestartClientProcessAsync(provider.Config.GetClientProcessName(), provider.Config.GetClientExePath, cancellationToken).ConfigureAwait(false);
-        LogManager.Instance.LogMessage($"Recovery completed for '{providerKeyword}'", LogLevel.Info);
+        bool clientRelaunched = await RestartClientProcessAsync(provider.Config.GetClientProcessName(), provider.Config.GetClientExePath, cancellationToken).ConfigureAwait(false);
+        // The service restart did complete either way; the terminal line says whether the client
+        // app came back with it, so a failed relaunch (already logged at Error above) is not
+        // followed by a line that reads as a clean outcome.
+        if (clientRelaunched)
+            LogManager.Instance.LogMessage($"Recovery completed for '{providerKeyword}'", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Recovery for '{providerKeyword}' restarted the service but could not relaunch the VPN client app - start it by hand if it is not running", LogLevel.Warn);
     }
 
     /// <summary>
@@ -74,28 +82,37 @@ internal static class AutoRecoveryManager
             return;
         }
 
-        LogManager.Instance.LogMessage($"Cycling adapter '{adapterName}'", LogLevel.Info);
+        // No "Cycling adapter" line here: the helper logs it, as it does "Restarting service" for a restart.
         var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
         cycleResult.RaiseLogAlerts();
 
+        // Every problem on the helper's cycle path (netsh failing, the disable or the re-enable not taking)
+        // is logged as a Warn, so the outcome counts Warns as well as Errors: a cycle that left the adapter
+        // disabled must not end with a "completed" line. The restart path differs - it verifies the service
+        // state at the end and reports a failure as an Error.
+        // No count and no advice in the Warn: one failed netsh call logs two helper Warns, and the
+        // helper's own lines just above it already say which step failed.
+        bool anyProblem = cycleResult.WarnCount + cycleResult.ErrorCount > 0;
         if (!cycleResult.Completed)
             LogManager.Instance.LogMessage($"Adapter cycle did not complete for '{adapterName}'", LogLevel.Warn);
-        else if (cycleResult.ErrorCount == 0)
+        else if (!anyProblem)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         else
-            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {TextFormat.Pluralize(cycleResult.ErrorCount, "error")} - see helper log entries", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' did not finish cleanly - see the helper log entries above", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),
     // waits briefly, then relaunches it. Runs in the main app's user session - no
     // elevation or WTS token manipulation needed.
     // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
-    private static async Task RestartClientProcessAsync(string processName, Func<string?> getInstalledExePath, CancellationToken cancellationToken = default)
+    // Returns false only when a relaunch was due and did not happen (no exe path, or the start failed);
+    // a provider without a client process has nothing to relaunch and counts as done.
+    private static async Task<bool> RestartClientProcessAsync(string processName, Func<string?> getInstalledExePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
             LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: Process name is empty - skipping");
-            return;
+            return true;
         }
 
         string? exePath = null;
@@ -119,7 +136,7 @@ internal static class AutoRecoveryManager
         if (exePath is null)
         {
             LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Error);
-            return;
+            return false;
         }
 
         // Not atomic across cancellation: a shutdown during this delay leaves the client killed and
@@ -134,10 +151,12 @@ internal static class AutoRecoveryManager
         {
             Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();
             LogManager.Instance.LogMessage($"Restarted client process '{processName}'", LogLevel.Info);
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Error);
+            return false;
         }
     }
 
@@ -160,11 +179,12 @@ internal static class AutoRecoveryManager
                 // Leave exePath null so the registry fallback path is used below.
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Could not read exe path for '{processName}': {ex.Message}");
             }
+            int killed = 0;
             foreach (var p in processes)
             {
                 try
                 {
-                    ProcessControl.KillProcess(p, $"Client process '{processName}'");
+                    if (ProcessControl.KillProcess(p, $"Client process '{processName}'")) killed++;
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
             }
@@ -172,10 +192,14 @@ internal static class AutoRecoveryManager
             // exePath is also null when instances *were* killed but MainModule threw (the 32/64-bit
             // mismatch and access-denied cases handled above), and VPN clients commonly run elevated -
             // so using it here would report "was not running" immediately after killing them.
-            if (processes.Length > 0)
-                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
-            else
+            // Counted, so the line only claims the kills that happened: an instance KillProcess could not
+            // end has already been reported by it at Warn, and "Killed" after that would contradict it.
+            if (processes.Length == 0)
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Client process '{processName}' was not running");
+            else if (killed == processes.Length)
+                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
+            else if (killed > 0)
+                LogManager.Instance.LogMessage($"Killed {killed} of {processes.Length} '{processName}' client processes", LogLevel.Info);
             return exePath;
         }
         finally

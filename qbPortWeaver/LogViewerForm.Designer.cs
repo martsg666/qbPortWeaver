@@ -51,6 +51,8 @@ partial class LogViewerForm
         toolTip        = new ToolTip(components);
         pnlToolbar.SuspendLayout();
         SuspendLayout();
+        // Long tooltips: the 5 s default hides them mid-sentence. Shared value across forms.
+        toolTip.AutoPopDelay = 30000;
 
         // Filter CheckBoxes - colors applied in OnLoad after theme is determined
         AnchorStyles leftAnchor = AnchorStyles.Left | AnchorStyles.Top;
@@ -118,7 +120,7 @@ partial class LogViewerForm
         toolTip.SetToolTip(chkDebug, "Show or hide DEBUG entries");
 
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
-        // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
+        // Positioned immediately after chkDebug; y/h match the filter buttons; OnLoad sizes and centres both groups to the search box together.
         btnIssuePrev.Anchor    = leftAnchor;
         btnIssuePrev.FlatStyle = FlatStyle.Flat;
         btnIssuePrev.Location  = new Point(296, 4);
@@ -152,7 +154,7 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
         toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
-        // Time range - narrows the view to a window ending now, or to a custom span. Sits between the
+        // Time range - narrows the view to a window ending now, or to a custom span. Sits after the
         // subsystem and log-file pickers because all three answer "which entries", unlike search.
         cboTimeRange.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
         cboTimeRange.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -197,7 +199,7 @@ partial class LogViewerForm
         btnClearSearch.Location                  = new Point(950, 5); // fine-tuned in OnLoad
         btnClearSearch.Padding                   = new Padding(0);
         btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
-        btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
+        btnClearSearch.Text                      = ""; // clear glyph owner-drawn by the Paint handler wired in OnLoad (UiHelpers.DrawClearGlyph)
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
         btnClearSearch.TabIndex                  = 10;
         btnClearSearch.TabStop                   = false;

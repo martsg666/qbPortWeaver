@@ -8,13 +8,17 @@ namespace qbPortWeaver;
 /// <summary>
 /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapterAsync() (sync cycle)
 /// or DiscoverAdaptersAsync() (SettingsForm). Renewal state is transferred across cycles via
-/// CopyRenewalStateFrom() so port renewal works correctly.
+/// CopyRenewalStateFrom() so port renewal works correctly. ProtonVpnManager also uses the static
+/// QueryExternalAddressAsync() to ask its tunnel gateway for the forward address, without building a manager.
 /// </summary>
 public sealed class NatPmpManager : IVpnManager
 {
     private const int NatPmpPort = 5351;
     private const int InitialTimeoutMs = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
     private const int MaxAttempts = 3;    // 1500ms -> 3000ms -> 6000ms
+    // QueryExternalAddressAsync runs inside the exit-address check, which has another source to fall
+    // back to, so it stops after 1500ms -> 3000ms rather than wait the full three.
+    private const int ExternalAddressQueryAttempts = 2;
     private const uint DefaultMappingLifetime = 3600; // 1 hour
 
     // RFC 6886 opcodes. UDP and TCP are independent mappings and must be requested separately,
@@ -33,15 +37,40 @@ public sealed class NatPmpManager : IVpnManager
     private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
     private uint _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-    private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
+    private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime, IPAddress? forwardAddress = null)
     {
         _adapter = adapter;
         _gateway = gateway;
         _mappingLifetime = mappingLifetime;
+        ForwardAddress = forwardAddress;
     }
 
     /// <inheritdoc />
     public string ProviderName => _adapter.Name;
+
+    /// <inheritdoc />
+    // The gateway's reply to the external-address probe made when this instance was created, which
+    // happens every sync cycle - except for the instance the sync loop falls back to when that probe goes
+    // unanswered, which forgets it (ForgetForwardAddress) rather than offer one from an earlier cycle.
+    public IPAddress? ForwardAddress { get; private set; }
+
+    /// <summary>
+    /// Drops the forward address, for the instance the sync loop reuses when this cycle's probe failed. The
+    /// gateway may have changed since (a reconnect to another server behind the same inferred gateway), and
+    /// comparing an old forward address with a new exit address would report a false mismatch. Without one,
+    /// the exit-address check treats the cycle as a failed lookup.
+    /// </summary>
+    internal void ForgetForwardAddress() => ForwardAddress = null;
+
+    /// <inheritdoc />
+    public IPAddress? TunnelAddress => VpnAdapter.GetIPv4Address(_adapter.Name);
+
+    /// <inheritdoc />
+    public string ForwardSource => $"The NAT-PMP gateway on '{_adapter.Name}'";
+
+    /// <inheritdoc />
+    public bool IsProtonVpnOverOpenVpn =>
+        string.Equals(_adapter.Name, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
     public uint LastGrantedLifetime { get; private set; }
@@ -49,25 +78,7 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     // Re-enumerates network interfaces because the stored _adapter object retains its
     // last-seen OperationalStatus even after the adapter is removed on disconnect.
-    public bool IsVpnConnected()
-    {
-        try
-        {
-            bool connected = NetworkInterface.GetAllNetworkInterfaces()
-                .Any(nic => nic.Name.Equals(_adapter.Name, StringComparison.OrdinalIgnoreCase)
-                         && nic.OperationalStatus == OperationalStatus.Up);
-
-            LogManager.Instance.LogDebug(connected
-                ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is connected"
-                : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is not found or not connected");
-
-            return connected;
-        }
-        catch (Exception ex)
-        {
-            return LogManager.LogDebugFalse($"NatPmpManager.IsVpnConnected: {ex.Message}");
-        }
-    }
+    public bool IsVpnConnected() => VpnAdapter.IsUp(_adapter.Name, "NatPmpManager.IsVpnConnected");
 
     /// <inheritdoc />
     // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
@@ -85,7 +96,7 @@ public sealed class NatPmpManager : IVpnManager
 
             if (!result.Success)
             {
-                LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Info); // Info: the cycle logs the Warn for this failure
                 return null;
             }
 
@@ -129,7 +140,7 @@ public sealed class NatPmpManager : IVpnManager
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Info); // Info: the cycle logs the Warn for this failure
             return null;
         }
     }
@@ -148,9 +159,13 @@ public sealed class NatPmpManager : IVpnManager
     {
         var tcp = await RequestPortMappingAsync(_gateway, _mappingLifetime, OpcodeMapTcp, udpPort, cancellationToken).ConfigureAwait(false);
 
+        // Transition-only: this runs on every renewal, and a gateway that refuses TCP refuses it every
+        // time, so a per-cycle Warn would bury the log and keep raising the badge. Cleared once TCP is
+        // granted on the same port, so a recurrence is reported again.
+        string tcpStateKey = $"vpn.natpmpTcp.{_adapter.Name}";
         if (!tcp.Success)
         {
-            LogManager.Instance.LogMessage(
+            LogManager.Instance.LogStateChange(tcpStateKey,
                 $"NAT-PMP TCP mapping for port {udpPort} was not granted on '{_adapter.Name}': {tcp.Error} - " +
                 "UDP is mapped, so this only matters if the gateway does not forward both protocols together",
                 LogLevel.Warn);
@@ -159,12 +174,13 @@ public sealed class NatPmpManager : IVpnManager
 
         if (tcp.ExternalPort != udpPort)
         {
-            LogManager.Instance.LogMessage(
+            LogManager.Instance.LogStateChange(tcpStateKey,
                 $"NAT-PMP granted TCP port {tcp.ExternalPort} but UDP port {udpPort} on '{_adapter.Name}' - " +
                 "the client listens on one port, so inbound TCP may not reach it",
                 LogLevel.Warn);
             return false;
         }
+        LogManager.Instance.ClearLogState(tcpStateKey);
 
         // Track the shorter of the two leases. WarnIfNatPmpLeaseTooShort compares the user's sync
         // interval against LastGrantedLifetime, which until here holds the UDP grant only - a TCP
@@ -183,22 +199,23 @@ public sealed class NatPmpManager : IVpnManager
     }
 
     /// <inheritdoc />
-    // Returns the provider token when the adapter belongs to a known provider (for service restart),
+    // Returns the provider token when the adapter belongs to an installed known provider (for service restart),
     // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
-    public string? GetRecoveryTarget() => FindProviderToken(_adapter.Name) ?? _adapter.Name;
+    public string? GetRecoveryTarget() => Recovery.Target;
 
     /// <inheritdoc />
-    public string GetRecoveryAction() =>
-        FindProviderToken(_adapter.Name) is not null
-            ? HelperProtocol.ActionRestart
-            : HelperProtocol.ActionCycleAdapter;
+    public string GetRecoveryAction() => Recovery.Action;
+
+    // Target and action from one service lookup, once per instance (one instance per cycle), so the two
+    // always agree and the Windows services are enumerated once rather than once per call.
+    private (string Target, string Action)? _recovery;
+    private (string Target, string Action) Recovery => _recovery ??= VpnAdapter.GetRecovery(_adapter.Name);
 
     /// <inheritdoc />
-    // Delegates to the shared matcher (AdapterNamesMatch). NAT-PMP and PIA match one configured
-    // name; ProtonVpnManager matches either of its two names. The configured name here is the
-    // adapter's own name (an instance field), not a registry value.
+    // Exact match (AdapterNamesMatchExactly), shared with Static port. The configured name here is
+    // the adapter's own name (an instance field), not a registry value.
     public bool IsAdapterMatch(string interfaceName)
-        => VpnRegistryConfig.AdapterNamesMatch(_adapter.Name, interfaceName);
+        => VpnRegistryConfig.AdapterNamesMatchExactly(_adapter.Name, interfaceName);
 
     /// <summary>
     /// Returns all network adapters whose gateway actively responds to NAT-PMP,
@@ -212,7 +229,7 @@ public sealed class NatPmpManager : IVpnManager
     {
         var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
-        foreach (NetworkInterface nic in GetActiveNetworkInterfaces())
+        foreach (NetworkInterface nic in VpnAdapter.GetActiveInterfaces())
         {
             IPAddress? gateway = ResolveGateway(nic);
             if (gateway is null)
@@ -248,35 +265,54 @@ public sealed class NatPmpManager : IVpnManager
     /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
     public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
     {
-        NetworkInterface? nic = GetActiveNetworkInterfaces()
-            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
-
-        if (nic is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
+        if (await ProbeAdapterAsync(nameof(TryCreateForAdapterAsync), adapterName, MaxAttempts, cancellationToken).ConfigureAwait(false)
+                is not { ExternalIp: { } externalIp } probe)
             return null;
-        }
-
-        IPAddress? gateway = ResolveGateway(nic);
-        if (gateway is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
-            return null;
-        }
-
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
-        LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
-
-        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
+        return new NatPmpManager(probe.Nic, probe.Gateway, mappingLifetime, AsForwardAddress(externalIp));
     }
 
     /// <summary>
-    /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
-    /// or <see langword="null"/> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
-    /// Delegates to <see cref="VpnProviderRegistry.FindProviderToken"/> so the provider list stays single-source.
+    /// Asks the gateway of the up adapter named <paramref name="adapterName"/> for its external address
+    /// (RFC 6886 opcode 0), without creating a manager or a mapping. Returns <see langword="null"/> when the
+    /// adapter is not up, has no gateway, the gateway does not answer, or it answers 0.0.0.0.
     /// </summary>
-    internal static string? FindProviderToken(string adapterName) =>
-        VpnProviderRegistry.FindProviderToken(adapterName);
+    /// <remarks>For ProtonVPN, whose port is forwarded through NAT-PMP on its tunnel gateway: the address
+    /// that gateway reports is the one the port is forwarded on, read the same way NAT-PMP mode reads it.
+    /// Fewer attempts than a manager's creation (<see cref="ExternalAddressQueryAttempts"/>): this runs
+    /// inside the exit-address check, which only falls back to another source when it gets nothing.</remarks>
+    internal static async Task<IPAddress?> QueryExternalAddressAsync(string adapterName, CancellationToken cancellationToken = default)
+    {
+        var probe = await ProbeAdapterAsync(nameof(QueryExternalAddressAsync), adapterName, ExternalAddressQueryAttempts, cancellationToken).ConfigureAwait(false);
+        return probe?.ExternalIp is { } externalIp ? AsForwardAddress(externalIp) : null;
+    }
+
+    // The steps both single-adapter entry points share: the named adapter if it is up, its gateway, and
+    // that gateway's answer to an external-address request (null when it did not answer). Null when the
+    // adapter is not up or has no usable gateway. Each step is logged under the caller's name.
+    private static async Task<(NetworkInterface Nic, IPAddress Gateway, IPAddress? ExternalIp)?> ProbeAdapterAsync(
+        string caller, string adapterName, int attempts, CancellationToken cancellationToken)
+    {
+        NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
+            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+        if (nic is null)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.{caller}: '{adapterName}' not found or not up");
+            return null;
+        }
+        if (ResolveGateway(nic) is not { } gateway)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.{caller}: '{adapterName}' no resolvable gateway");
+            return null;
+        }
+
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, attempts, cancellationToken).ConfigureAwait(false);
+        LogProbeResultDebug(caller, adapterName, gateway, externalIp);
+        return (nic, gateway, externalIp);
+    }
+
+    // RFC 6886 lets a gateway with no public address yet answer 0.0.0.0. It still speaks NAT-PMP, but
+    // that is no forward address: compared with the exit address it would report a false mismatch.
+    private static IPAddress? AsForwardAddress(IPAddress externalIp) => externalIp.Equals(IPAddress.Any) ? null : externalIp;
 
     // Transfers renewal state from a previous instance so that port renewal works correctly
     // when a fresh NatPmpManager instance is created each cycle.
@@ -285,42 +321,6 @@ public sealed class NatPmpManager : IVpnManager
         _lastExternalPort = other._lastExternalPort;
         _lastEpochSeconds = other._lastEpochSeconds;
         LastGrantedLifetime = other.LastGrantedLifetime;
-    }
-
-    // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
-    // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) -
-    // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
-    // Unknown or Ethernet and are not excluded by this filter.
-    //
-    // Guarded the same way both IsVpnConnected implementations guard this call (here and in
-    // ProtonVpnManager): GetAllNetworkInterfaces throws NetworkInformationException when the network
-    // subsystem is briefly unavailable, which on a machine riding VPN adapter churn is an ordinary
-    // transient rather than a fault. An empty sequence hands the callers the answer they already
-    // handle - TryCreateForAdapterAsync returns null ("not found or not up") and DiscoverAdaptersAsync
-    // an empty list - instead of a throw that RunAsync would report as "An unexpected error occurred"
-    // at Error, for what is really just a disconnected adapter. Without this the two static factories
-    // were the only unguarded users of an API the two instance methods already treat as fallible.
-    //
-    // ToList inside the try is load-bearing: a deferred Where would run GetAllNetworkInterfaces at the
-    // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire. The
-    // return type is List rather than IEnumerable so the compiler enforces that rather than this
-    // comment: returning the lazy Where directly no longer builds. It also lets the foreach in
-    // DiscoverAdaptersAsync use List's struct enumerator instead of dispatching through the interface.
-    private static List<NetworkInterface> GetActiveNetworkInterfaces()
-    {
-        try
-        {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up
-                           && nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback
-                                                      and not NetworkInterfaceType.Tunnel)
-                .ToList();
-        }
-        catch (NetworkInformationException ex)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.GetActiveNetworkInterfaces: {ex.Message}");
-            return [];
-        }
     }
 
     // Resolves the usable gateway for an adapter.
@@ -332,7 +332,7 @@ public sealed class NatPmpManager : IVpnManager
     // Takes the adapter rather than its properties so the GetIPProperties call is inside this guard.
     // It is the second thing here that throws NetworkInformationException on a briefly unavailable
     // network subsystem, and it throws per adapter - one disappearing mid-enumeration must not cost
-    // the whole scan. Null is "no usable gateway", which both callers already skip.
+    // the whole scan. Null is "no usable gateway", which every caller already skips.
     private static IPAddress? ResolveGateway(NetworkInterface nic)
     {
         IPInterfaceProperties props;
@@ -512,7 +512,7 @@ public sealed class NatPmpManager : IVpnManager
             // every caller, so shutting down mid-request logged a port detection failure, advanced the
             // auto-recovery streak, and could dispatch a VPN restart on the way out. Listed first so the
             // two filters are exhaustive over OperationCanceledException and none can reach the generic
-            // catch. Same arm the clients, PiaVpnManager and ProtonVpnManager already use.
+            // catch. Same arm the clients already use.
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

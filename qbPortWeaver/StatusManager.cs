@@ -6,7 +6,8 @@ namespace qbPortWeaver;
 /// <summary>
 /// String values written to the "status" field of the status file (and surfaced to the Status
 /// panel and external scripts). Kept stable across releases like the status keys. "skipped" means
-/// port sync was disabled or the VPN was disconnected with no default port (the cycle is a no-op).
+/// the cycle did no port work - for example port sync was disabled, or the VPN was disconnected
+/// with no default port.
 /// </summary>
 public static class SyncStatusValues
 {
@@ -70,8 +71,31 @@ public sealed record StatusSnapshot
     /// <summary>Consecutive confirmed-closed checks required before port-closed recovery triggers.</summary>
     [JsonPropertyName("portClosedRecoveryTriggerChecks")] public int PortClosedRecoveryTriggerChecks { get; init; }
     /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
-    /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
+    /// port open again or the VPN provider or adapter changes. While false that trigger cannot fire however long the port stays closed.</summary>
     [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
+    /// <summary>When the port-closed trigger's hold ends, while its count has reached the threshold but
+    /// a time hold keeps it back (the port has not stayed closed long enough, or an exit-address
+    /// reconnect is still settling); null otherwise. The counterpart of <see cref="RecoverySustainedUntil"/>.</summary>
+    [JsonPropertyName("portClosedRecoveryHeldUntil")] public DateTimeOffset? PortClosedRecoveryHeldUntil { get; init; }
+    /// <summary>The address the port is forwarded on, as the provider reported it at the last exit-address
+    /// lookup; null until a closed or undetermined port test prompts one, and for providers that report no forward address.</summary>
+    [JsonPropertyName("vpnForwardAddress")] public string? VpnForwardAddress { get; init; }
+    /// <summary>The address traffic was last seen leaving the VPN from; null when not looked up or not determinable.</summary>
+    [JsonPropertyName("vpnExitAddress")] public string? VpnExitAddress { get; init; }
+    /// <summary>True while both addresses are known and differ: peers are given the exit address and cannot
+    /// reach the forward, and port-closed recovery is held.</summary>
+    [JsonPropertyName("vpnExitAddressMismatch")] public bool VpnExitAddressMismatch { get; init; }
+    /// <summary>VPN reconnects made so far for the current mismatch, each one for a new exit address.</summary>
+    [JsonPropertyName("vpnExitReconnects")] public int VpnExitReconnects { get; init; }
+    /// <summary>The most reconnects made for one mismatch before the user is asked to change server;
+    /// 0 on a status file written before this key existed.</summary>
+    [JsonPropertyName("vpnExitReconnectsMax")] public int VpnExitReconnectsMax { get; init; }
+    /// <summary>True once the last reconnect's session still did not match and the user was asked to
+    /// change server. Not inferred from the count, which reaches the limit before that session is checked.</summary>
+    [JsonPropertyName("vpnExitReconnectGaveUp")] public bool VpnExitReconnectGaveUp { get; init; }
+    /// <summary>True when the last lookup ran over ProtonVPN's OpenVPN tunnel, where mismatches were seen
+    /// and the advice is to switch ProtonVPN to Proton WireGuard (UDP).</summary>
+    [JsonPropertyName("vpnProtonOverOpenVpn")] public bool VpnProtonOverOpenVpn { get; init; }
 }
 
 /// <summary>
@@ -84,6 +108,9 @@ public static class StatusManager
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions _readOptions = new() { PropertyNameCaseInsensitive = true };
 
+    // State key for LogStateChange: a status-file write failure is reported once, not once per cycle.
+    private const string StatusWriteStateKey = "statusFile.write";
+
     /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
     public static void Write(IReadOnlyDictionary<string, object?> status)
     {
@@ -93,10 +120,14 @@ public static class StatusManager
         {
             string json = JsonSerializer.Serialize(status, _jsonOptions);
             AppFiles.WriteAtomic(filePath, json);
+            LogManager.Instance.ClearLogState(StatusWriteStateKey);
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogMessage($"Failed to write status file: {ex.Message}", LogLevel.Warn);
+            // Transition-only, as PortHistoryManager does for its file: a write failure persists until
+            // the user fixes it (disk full, permissions), and a Warn on every cycle would bury the log
+            // and keep raising the badge.
+            LogManager.Instance.LogStateChange(StatusWriteStateKey, $"Failed to write status file: {AppFiles.DescribeWriteFailure(ex, filePath)}", LogLevel.Warn);
         }
     }
 

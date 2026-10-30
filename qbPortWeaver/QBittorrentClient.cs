@@ -122,8 +122,8 @@ public sealed class QBittorrentClient : ManagedClientBase
     // envelope to inspect, so the status code is the whole result. What differs between the two
     // callers is the wording and the severity (a failed port write is an Error the user must act on;
     // a failed binding repair is a Warn the next cycle retries), so those are parameters.
-    // [CallerMemberName] keeps the transport log line attributed to the public method, as the
-    // equivalent helpers in TransmissionClient and NicotineClient do.
+    // [CallerMemberName] keeps the transport log line attributed to the method that started the write
+    // (usually a public one), as the equivalent helpers in TransmissionClient and NicotineClient do.
     private async Task<bool> PostPreferencesAsync(string jsonBody, string failureMessage, LogLevel failureLevel,
         CancellationToken cancellationToken, [CallerMemberName] string callerName = "")
     {
@@ -221,12 +221,14 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics,
-    // on demand and long after that read, and the whole point is to see the setting as it is now.
+    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics on
+    // demand, and from the cycle only every few cycles, so the values must be read as they are now.
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        // Every null exit below is logged: Diagnostics reports an unread check as Skip and tells the
-        // user to consult the log, so a silent return would send them somewhere empty.
+        // Every null exit below is logged, at Debug: Diagnostics reports an unread check as Skip and
+        // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+        // than Warn because the sync cycle also runs this every few cycles, and a persistent failure
+        // here would otherwise badge the tray each time for an advisory check.
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false))
         {
             LogManager.Instance.LogDebug("QBittorrentClient.GetConflictingSettingsAsync: not authenticated");
@@ -250,7 +252,7 @@ public sealed class QBittorrentClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }
@@ -415,38 +417,57 @@ public sealed class QBittorrentClient : ManagedClientBase
 
     // Addresses qBittorrent reports for one interface token, or null when the list cannot be read -
     // which includes qBittorrent versions predating the endpoint, so callers degrade to doing nothing.
-    // Mirrors GetNetworkInterfacesAsync exactly, including its logging levels.
-    private async Task<List<string>?> GetInterfaceAddressesAsync(string interfaceToken, CancellationToken cancellationToken)
+    private Task<List<string>?> GetInterfaceAddressesAsync(string interfaceToken, CancellationToken cancellationToken) =>
+        GetJsonArrayAsync(
+            $"{Url}{ApiNetworkInterfaceAddressList}?iface={Uri.EscapeDataString(interfaceToken)}",
+            nameof(GetInterfaceAddressesAsync), "interface address not checked",
+            entry => entry.ValueKind == JsonValueKind.String && entry.GetString() is { Length: > 0 } address
+                ? (true, address)
+                : (false, string.Empty),
+            cancellationToken);
+
+    // GETs a JSON array and maps each entry, keeping those the mapper accepts. Null when the list cannot
+    // be read - not authenticated, a non-success status, a body that is not an array, or any exception -
+    // with every one of those at Debug, because both callers degrade to skipping a check. Debug for
+    // exceptions via the shared classifier: the catch sees transport failures as well as a malformed
+    // body, and the classifier gives timeout and connection-refused their own wording (the same
+    // reachability question the port checks ask) and names the method and exception type otherwise.
+    private async Task<List<T>?> GetJsonArrayAsync<T>(string url, string caller, string notChecked,
+        Func<JsonElement, (bool Keep, T Value)> map, CancellationToken cancellationToken)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
         try
         {
-            string url = $"{Url}{ApiNetworkInterfaceAddressList}?iface={Uri.EscapeDataString(interfaceToken)}";
             using var response = await HttpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 LogManager.Instance.LogDebug(
-                    $"QBittorrentClient.GetInterfaceAddressesAsync: HTTP {(int)response.StatusCode} {response.StatusCode} - interface address not checked");
+                    $"QBittorrentClient.{caller}: HTTP {(int)response.StatusCode} {response.StatusCode} - {notChecked}");
                 return null;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                LogManager.Instance.LogDebug(
+                    $"QBittorrentClient.{caller}: response is a JSON {doc.RootElement.ValueKind}, not an array - {notChecked}");
+                return null;
+            }
 
-            var result = new List<string>();
+            var result = new List<T>();
             foreach (var entry in doc.RootElement.EnumerateArray())
             {
-                if (entry.ValueKind == JsonValueKind.String && entry.GetString() is { Length: > 0 } address)
-                    result.Add(address);
+                var (keep, value) = map(entry);
+                if (keep) result.Add(value);
             }
             return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException(nameof(GetInterfaceAddressesAsync), ex, LogLevel.Debug);
+            LogHttpException(caller, ex, LogLevel.Debug);
             return null;
         }
     }
@@ -564,43 +585,14 @@ public sealed class QBittorrentClient : ManagedClientBase
 
     // Live adapters as (name, token) pairs, or null when the list cannot be read - which includes
     // qBittorrent versions predating the endpoint, so callers degrade to doing nothing.
-    private async Task<List<(string Name, string Value)>?> GetNetworkInterfacesAsync(CancellationToken cancellationToken)
-    {
-        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
-
-        try
-        {
-            using var response = await HttpClient.GetAsync($"{Url}{ApiNetworkInterfaceList}", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug(
-                    $"QBittorrentClient.GetNetworkInterfacesAsync: HTTP {(int)response.StatusCode} {response.StatusCode} - interface binding not checked");
-                return null;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
-
-            var result = new List<(string Name, string Value)>();
-            foreach (var entry in doc.RootElement.EnumerateArray())
-            {
-                if (entry.GetStringOrNull("name") is { } name && entry.GetStringOrNull("value") is { } value)
-                    result.Add((name, value));
-            }
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex)
-        {
-            // Debug via the shared classifier: this catch sees transport failures as well as a
-            // malformed body, and the classifier covers both - timeout and connection-refused get
-            // their own wording (the same reachability question the port checks ask), and anything
-            // else falls to its generic branch, which names the method and the exception type.
-            LogHttpException(nameof(GetNetworkInterfacesAsync), ex, LogLevel.Debug);
-            return null;
-        }
-    }
+    private Task<List<(string Name, string Value)>?> GetNetworkInterfacesAsync(CancellationToken cancellationToken) =>
+        GetJsonArrayAsync(
+            $"{Url}{ApiNetworkInterfaceList}",
+            nameof(GetNetworkInterfacesAsync), "interface binding not checked",
+            entry => entry.GetStringOrNull("name") is { } name && entry.GetStringOrNull("value") is { } value
+                ? (true, (name, value))
+                : (false, (string.Empty, string.Empty)),
+            cancellationToken);
 
     /// <inheritdoc/>
     protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)

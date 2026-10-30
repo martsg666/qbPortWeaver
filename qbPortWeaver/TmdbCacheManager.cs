@@ -16,7 +16,8 @@ internal static class TmdbCacheManager
 
     private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
-    // ConcurrentDictionary: sync cycle and UI scan can overlap.
+    // ConcurrentDictionary: lookups within one scan or import run in parallel. (A sync-cycle import and a
+    // window scan no longer overlap - MediaManagerService runs one media operation at a time.)
     // CachedAt is stored in the tuple so SaveToDisk can preserve the original timestamp; without it
     // every save would reset the TTL to now, allowing entries to persist indefinitely.
     private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident, DateTime CachedAt)>
@@ -63,12 +64,14 @@ internal static class TmdbCacheManager
     // The Lazy<Task> wrapper ensures the compute factory runs at most once even when multiple callers
     // race on the same key; subsequent waiters share the in-flight task.
     //
-    // Known cancellation cascade (accepted as documented behavior):
-    // The first caller's CancellationToken is captured inside their compute closure. If a SECOND scan
-    // starts while the first scan's lookups are still in flight, the first scan's CT cancels. There
-    // is a microsecond race window between the in-flight task faulting with OCE and this method's
-    // finally block evicting the Lazy. If the second scan's GetOrAdd lands inside that window, it
-    // shares the already-faulted Lazy and observes the foreign OCE even though its own CT is fine.
+    // Known cancellation cascade (accepted as documented behavior), now largely theoretical: since
+    // MediaManagerService runs one media operation at a time, a second scan cannot start while the
+    // first is in flight. The first caller's CancellationToken is captured inside their compute
+    // closure. If a SECOND scan were to start while the first scan's lookups are still in flight, the
+    // first scan's CT cancels. There is a microsecond race window between the in-flight task faulting
+    // with OCE and this method's finally block evicting the Lazy. If the second scan's GetOrAdd lands
+    // inside that window, it shares the already-faulted Lazy and observes the foreign OCE even though
+    // its own CT is fine.
     // The user-visible effect is a single spurious "Scan cancelled." status message on the second
     // scan. No data loss; the next user-triggered scan creates a fresh Lazy and proceeds normally.
     private static async Task<(T? Info, bool IsConfident)> GetOrComputeAsync<T>(
@@ -78,7 +81,14 @@ internal static class TmdbCacheManager
         ConcurrentDictionary<string, Lazy<Task<(T? Info, bool IsConfident)>>> inFlight,
         Action markDirty) where T : class
     {
-        if (cache.TryGetValue(cacheKey, out var cached)) return (cached.Info, cached.IsConfident);
+        // The TTL is applied here as well as at load: the load runs once per session, so without this an
+        // app left running for weeks would keep using entries far past it. An expired one is dropped and
+        // looked up again, exactly as if it had expired before the load.
+        if (cache.TryGetValue(cacheKey, out var cached))
+        {
+            if (cached.CachedAt >= DateTime.UtcNow.AddDays(-TtlDays)) return (cached.Info, cached.IsConfident);
+            cache.TryRemove(new KeyValuePair<string, (T? Info, bool IsConfident, DateTime CachedAt)>(cacheKey, cached));
+        }
         // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
         var lazy = inFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(T? Info, bool IsConfident)>>(compute));
         try

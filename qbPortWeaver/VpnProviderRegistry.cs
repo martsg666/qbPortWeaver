@@ -6,7 +6,7 @@ internal sealed record VpnProvider(string Keyword, VpnRegistryConfig Config);
 /// <summary>
 /// Single source of truth for the VPN providers qbPortWeaver knows how to drive in auto-recovery.
 /// <para><b>Adding a provider.</b> Add one entry to <see cref="KnownProviders"/>; everything in this
-/// class derives from it, as do <see cref="NatPmpManager.FindProviderToken"/>,
+/// class derives from it, as do <see cref="VpnAdapter.GetRecovery"/>,
 /// <see cref="AutoRecoveryManager"/> and <see cref="VpnDetector"/>. That is not the whole job,
 /// though - you must also add the keyword constant in <see cref="RegistrySettingsManager"/>, the
 /// dispatch in <c>PortSyncService.CreateVpnManagerAsync</c> that decides which manager to construct,
@@ -24,23 +24,25 @@ internal static class VpnProviderRegistry
     /// <summary>
     /// Returns the matching provider keyword if <paramref name="adapterName"/> matches a known
     /// provider's configured adapter name(s), or <see langword="null"/> otherwise. Matches against the
-    /// provider's registry-driven adapter name(s) via <see cref="VpnRegistryConfig.MatchesAdapterName"/> -
+    /// provider's registry-driven adapter name(s) via <see cref="VpnRegistryConfig.IsLiveAdapterOfThisProvider"/> -
     /// for ProtonVPN that includes both its primary name and its in-house "ProTUN" name - rather than
-    /// the bare keyword, so a ProTUN adapter is still recognised as ProtonVPN. Recovery uses this to
-    /// decide whether to restart the provider's service (match) or cycle the adapter (no match).
+    /// the bare keyword, so a ProTUN adapter is still recognised as ProtonVPN. Recovery uses this, plus
+    /// a check that the provider's service is installed, to decide whether to restart that service or
+    /// cycle the adapter (<see cref="VpnAdapter.GetRecovery"/>).
     /// </summary>
     internal static string? FindProviderToken(string adapterName) =>
-        KnownProviders.FirstOrDefault(p => p.Config.MatchesAdapterName(adapterName))?.Keyword;
+        KnownProviders.FirstOrDefault(p => p.Config.IsLiveAdapterOfThisProvider(adapterName))?.Keyword;
 
     /// <summary>Returns the provider entry whose <see cref="VpnProvider.Keyword"/> equals <paramref name="keyword"/> (case-insensitive), or <see langword="null"/> if no provider matches.</summary>
     internal static VpnProvider? FindByKeyword(string keyword) =>
         KnownProviders.FirstOrDefault(p => p.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Returns <see langword="true"/> if <paramref name="provider"/> is one of the three VPN providers
-    /// selectable in Settings (ProtonVPN, PIA, NAT-PMP). Broader than <see cref="KnownProviders"/>,
-    /// which only lists providers with a dedicated service-restart recovery config - NAT-PMP recovers
-    /// via generic adapter cycling instead, so it is valid here but absent from <see cref="KnownProviders"/>.
+    /// Returns <see langword="true"/> if <paramref name="provider"/> is one of the VPN providers
+    /// selectable in Settings (ProtonVPN, PIA, NAT-PMP, Static port). Broader than <see cref="KnownProviders"/>,
+    /// which only lists providers with a dedicated service-restart recovery config - NAT-PMP and Static
+    /// port recover through the chosen adapter instead, so they are valid here but absent from
+    /// <see cref="KnownProviders"/>.
     /// </summary>
     internal static bool IsRecognizedProvider(string? provider) =>
         provider is not null && (
@@ -48,7 +50,9 @@ internal static class VpnProviderRegistry
             // automatically. Re-listing them meant a new provider recovered correctly but was reported
             // as unrecognised by Diagnostics.
             KnownProviders.Any(p => p.Keyword.Equals(provider, StringComparison.OrdinalIgnoreCase)) ||
-            // NAT-PMP stays explicit: it is deliberately absent from KnownProviders (no service to
-            // restart - it recovers by cycling the adapter) while still being selectable in Settings.
-            provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase));
+            // NAT-PMP and Static port stay explicit: they are deliberately absent from KnownProviders
+            // (no service of their own to restart - they recover through the chosen adapter) while
+            // still being selectable in Settings.
+            provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase));
 }

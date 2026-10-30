@@ -24,7 +24,7 @@ A lightweight Windows system tray application that keeps the listening port of *
 
 ### VPN Support
 
-Works with **ProtonVPN** (log file or NAT-PMP), **PIA** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
+Works with **ProtonVPN** (log file or NAT-PMP), **PIA** (`piactl`), any **NAT-PMP capable VPN or router** (RFC 6886), and any provider that assigns a **permanent forwarded port** (entered once in Settings). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
 
 ### Port Sync
 
@@ -37,6 +37,7 @@ Imports movie and TV episode files into Plex-compatible library folders on each 
 ### Other Features
 
 - Status panel and color-coded tray icon showing the live sync state, with a persisted history of recent port changes, session statistics, an on-demand port reachability test, and an auto-recovery line showing failures building toward a recovery attempt or the wait until the next one
+- VPN exit address check (NAT-PMP and ProtonVPN) that warns when the VPN sends traffic out on a different address than the one the port is forwarded on, names both addresses, and reconnects for a matching one; on ProtonVPN it advises Proton WireGuard (UDP), since OpenVPN connections often do this
 - One-click diagnostics that health-check the whole sync chain and suggest fixes
 - In-app update that downloads and installs new versions, plus an automatic update checker
 - Built-in user guide with a browsable contents tree and search, available offline from the tray menu

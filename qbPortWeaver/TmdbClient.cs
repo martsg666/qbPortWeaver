@@ -74,7 +74,9 @@ public sealed class TmdbClient(string apiKey)
         // or a truncated download produces on an otherwise successful response. Letting it escape
         // kills the app, because the caller is an async void event handler that only expects
         // OperationCanceledException. Returning null is the documented "no poster" outcome.
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+        // IOException: GetByteArrayAsync streams the body, so a connection reset mid-download surfaces as
+        // an HttpIOException rather than an HttpRequestException.
+        catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException
                                          or ArgumentException or OutOfMemoryException or NotSupportedException)
         {
             LogManager.Instance.LogDebug(
@@ -176,6 +178,11 @@ public sealed class TmdbClient(string apiKey)
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (TmdbUnavailableException ex)
+        {
+            ReportUnavailable($"{mediaKind} '{query.Title}'", ex);
+            return (null, false);
+        }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -183,22 +190,93 @@ public sealed class TmdbClient(string apiKey)
         }
     }
 
+    // State key for the "TMDB unavailable" Warn, so a run of failures reports once.
+    private const string UnavailableStateKey = "tmdb.unavailable";
+
+    /// <summary>
+    /// Reports a lookup skipped because TMDB is unavailable: the title at Debug, and once per state the Warn
+    /// that says why - shared by the import and scan lookups and by the window's Re-match, so a run of
+    /// failures says it once however many titles it skips. Cleared by the next successful request.
+    /// </summary>
+    internal static void ReportUnavailable(string what, Exception ex)
+    {
+        LogManager.Instance.LogDebug($"TmdbClient.ReportUnavailable: {what} skipped: {ex.Message}", Subsystem.MediaManager);
+        LogManager.Instance.LogStateChange(UnavailableStateKey,
+            "TMDB is unreachable or rejected the API key - the remaining lookups of this run are skipped; check the API key in the Media Manager and the connection",
+            LogLevel.Warn, Subsystem.MediaManager);
+    }
+
+    // Thrown for a lookup once TMDB has failed in a way every later lookup of the run would repeat: the
+    // key was rejected (401/403), or TMDB could not be reached or timed out twice in a row. Each later
+    // call then fails at once instead of spending a request - up to the 10 s timeout - and a Warn per title.
+    // Public only because exception types must be (S3871).
+    public sealed class TmdbUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
+
+    // Set by the first such failure; this instance serves one import, scan or Re-match run, so it resets
+    // with the next.
+    private volatile bool _unavailable;
+
+    /// <summary>Whether TMDB became unavailable during this instance's run, so lookups after that point
+    /// were skipped rather than answered.</summary>
+    internal bool WasUnavailable => _unavailable;
+
+    // Consecutive transport failures: timeouts, and requests that got no HTTP answer at all. One alone is a
+    // slow answer or a dropped connection (a VPN reconnect resets it mid-run), not an outage - it costs that
+    // one title - so the run is only given up on at the second in a row. Reset by any successful request.
+    private int _consecutiveTransportFailures;
+    private const int TransportFailuresBeforeUnavailable = 2;
+
+    // Whether a failure means every later lookup of the run would fail the same way. Counts transport
+    // failures as a side effect; called from an exception filter, which runs inside the limiter hold, so
+    // the count is serialised with the request that failed.
+    private bool MeansUnavailable(Exception ex, CancellationToken cancellationToken)
+    {
+        switch (ex)
+        {
+            case HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden }:
+                return true;
+            case HttpRequestException { StatusCode: null }:                                 // could not be reached
+            case TaskCanceledException when !cancellationToken.IsCancellationRequested:     // timed out
+                return Interlocked.Increment(ref _consecutiveTransportFailures) >= TransportFailuresBeforeUnavailable;
+            default:
+                return false;
+        }
+    }
+
     // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
     // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
     private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken cancellationToken = default)
     {
+        if (_unavailable) throw new TmdbUnavailableException("TMDB failed earlier in this run");
         await _rateLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Again once it is this caller's turn: callers already queued on the limiter when the failure came
+        // would otherwise each still send a request, at up to the timeout apiece. Released without the
+        // cooldown, which only spaces requests that are actually sent.
+        if (_unavailable)
+        {
+            _rateLimiter.Release();
+            throw new TmdbUnavailableException("TMDB failed earlier in this run");
+        }
         try
         {
+            // One request path for both key formats. SendAsync buffers the whole body before returning, so a
+            // connection reset mid-reply surfaces as an HttpRequestException with no status, which
+            // MeansUnavailable counts; GetFromJsonAsync streamed it instead, and the same reset escaped as an
+            // HttpIOException that no TMDB handler caught, depending only on which key format was pasted.
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
             if (_useBearer)
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-                using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
-            }
-            return await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            T? result = await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
+            Interlocked.Exchange(ref _consecutiveTransportFailures, 0);
+            LogManager.Instance.ClearLogState(UnavailableStateKey);
+            return result;
+        }
+        catch (Exception ex) when (MeansUnavailable(ex, cancellationToken))
+        {
+            _unavailable = true;
+            throw new TmdbUnavailableException(ex.Message, ex);
         }
         finally
         {

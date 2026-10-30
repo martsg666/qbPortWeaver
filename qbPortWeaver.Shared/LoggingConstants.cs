@@ -35,6 +35,16 @@ public static class LoggingConstants
     public const string LevelErrorLabel = "ERROR";
     public const string LevelDebugLabel = "DEBUG";
 
+    /// <summary>The padded label for <paramref name="level"/>. The one mapping both processes use, so
+    /// neither depends on the order <see cref="LogLevel"/> declares its members in.</summary>
+    public static string LabelFor(LogLevel level) => level switch
+    {
+        LogLevel.Warn => LevelWarnLabel,
+        LogLevel.Error => LevelErrorLabel,
+        LogLevel.Debug => LevelDebugLabel,
+        _ => LevelInfoLabel,
+    };
+
     /// <summary>
     /// Formats a single log entry with the standard layout used by both processes:
     /// <c>"yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message\n"</c>. Used by

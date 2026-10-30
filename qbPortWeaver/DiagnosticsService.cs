@@ -38,6 +38,7 @@ public static class DiagnosticsService
         public const string InternetConnectivity = "Internet connectivity";
         public const string VpnConnection = "VPN connection";
         public const string ForwardedPort = "Forwarded port";
+        public const string VpnExitAddress = "VPN exit address";
         public const string ClientRunning = "Client running";
         public const string ClientReachable = "Client reachable";
         public const string PortsInSync = "Ports in sync";
@@ -54,6 +55,9 @@ public static class DiagnosticsService
     /// <summary>Runs all diagnostic checks in sync-chain order. Throws <see cref="OperationCanceledException"/> only if <paramref name="cancellationToken"/> fires.</summary>
     public static async Task<IReadOnlyList<DiagnosticResult>> RunAsync(CancellationToken cancellationToken = default)
     {
+        // Read the debug setting here as the sync cycle does: the client-settings hint tells the user to
+        // turn debug logging on and run Diagnostics again, and that must work without waiting for a cycle.
+        LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
         LogManager.Instance.LogMessage("Diagnostics started", LogLevel.Info);
         var results = new List<DiagnosticResult>();
 
@@ -95,7 +99,10 @@ public static class DiagnosticsService
         string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
         if (string.IsNullOrWhiteSpace(url))
             results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{client.Name} selected, but no URL is configured",
-                $"Enter the {client.Name} Web UI/RPC URL in Settings."));
+                // Nicotine+ has no Web UI or RPC: the address is the bridge plugin's, filled in by ⟳.
+                client.Name == RegistrySettingsManager.ClientNameNicotine
+                    ? $"With {client.Name} running, click ⟳ next to the Plugin token on the {client.Name} tab in Settings."
+                    : $"Enter the {client.Name} Web UI/RPC URL in Settings."));
         else
             results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{client.Name} ({url})"));
     }
@@ -107,7 +114,14 @@ public static class DiagnosticsService
         {
             using var sc = new ServiceController(HelperProtocol.ServiceName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
-            if (status == ServiceControllerStatus.Running)
+            // A helper from another version can be left behind by a partial upgrade or a downgrade (an
+            // older installer does not replace a newer helper), and the app otherwise only notices at the
+            // first recovery that completes. Unknown version (unreadable file) is not a mismatch.
+            string? helperVersion = status == ServiceControllerStatus.Running ? GetHelperServiceVersion() : null;
+            if (status == ServiceControllerStatus.Running && helperVersion is not null && helperVersion != AppVersion)
+                results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Installed and running, but version {helperVersion} (the app is {AppVersion})",
+                    "Reinstall qbPortWeaver so the helper service matches the app."));
+            else if (status == ServiceControllerStatus.Running)
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
             else
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Installed but {status}",
@@ -154,10 +168,10 @@ public static class DiagnosticsService
         }
 
         // Both causes are named because the reader cannot be sent to fix the wrong one, and the probe
-        // genuinely cannot tell them apart. Same opening words as the hold line TryTakeRecoverySlotAsync
+        // genuinely cannot tell them apart. Same opening words as the hold line RecoveryGate.TryTakeRecoverySlotAsync
         // writes to the log, so a support reader matching the two sees one condition, not two.
         // "when enabled" and "repeat attempts" are both load-bearing. The limiter lives in
-        // TriggerRecoveryIfDueAsync, which returns early unless vpnAutoRecoveryEnabled is set, and it
+        // RecoveryGate.TriggerRecoveryIfDueAsync, which RegisterFailureAndTryRecoveryAsync reaches only while vpnAutoRecoveryEnabled is set, and it
         // gates only that trigger - the port-closed trigger reaches DispatchRecoveryAsync directly,
         // having already proven connectivity by fetching a port. Even where it does apply, the first
         // attempt of a streak always runs; only later ones wait. Stating it flatly told a user with
@@ -178,22 +192,38 @@ public static class DiagnosticsService
             return (null, null);
         }
 
+        // Checked before the connection, as the sync loop refuses this configuration before it looks
+        // at the adapter: otherwise a down adapter would be reported first, with a hint about the
+        // VPN's port forwarding, and the missing setting would never be named. Same order and wording
+        // as PortSyncService.CreateStaticPortVpnManager, so Diagnostics names what the tray names.
+        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) &&
+            MissingStaticPortSetting() is { } missing)
+        {
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, missing.Message, missing.Hint));
+            return (null, null);
+        }
+
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
         if (vpn is null)
         {
-            bool natPmp = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
-            string hint = natPmp
-                ? "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP."
-                : "Reselect the VPN provider in Settings.";
-            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
-            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable"));
+            results.AddRange(provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase)
+                ? NatPmpUnavailableResults()
+                : [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", "Reselect the VPN provider in Settings → General."),
+                   new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable")]);
             return (null, null);
         }
 
         if (!vpn.IsVpnConnected())
         {
-            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected",
-                "Connect your VPN and enable port forwarding on a P2P server."));
+            // NAT-PMP and Static port name the adapter, and "not connected" means that adapter is
+            // down; a P2P-server hint only fits the two service-backed providers.
+            bool adapterBased = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) ||
+                provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase);
+            string hint = adapterBased
+                ? $"Connect the VPN that owns the '{vpn.ProviderName}' adapter, or select the right adapter in Settings → General."
+                : "Connect your VPN and enable port forwarding on a P2P server.";
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected", hint));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected"));
             return (vpn, null);
         }
@@ -205,21 +235,97 @@ public static class DiagnosticsService
         // Same usability rule the sync loop applies, so the report cannot pass a port the loop
         // would ignore. An unusable value is discarded here too, leaving the later in-sync check
         // to skip rather than compare the client against nonsense.
+        string? gatewayHint = GenericGatewayNoPortHint(provider, vpn.ProviderName);
         if (port is int reported && !AppConstants.IsUsablePort(reported))
         {
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail,
                 $"{vpn.ProviderName} reported an unusable port ({reported})",
-                "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
+                "The VPN is connected but has not assigned a usable forwarded port. " +
+                (gatewayHint ?? "Re-check that port forwarding is enabled on a P2P server.")));
             return (vpn, null);
         }
 
         if (port is int p)
+        {
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
+            await AddVpnExitAddressResultAsync(results, vpn, p, cancellationToken).ConfigureAwait(false);
+        }
         else
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
-                "Ensure port forwarding is enabled on a P2P server."));
+                gatewayHint ?? "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
     }
+
+    // The connection and port rows when no NAT-PMP manager could be built, in the three states the sync
+    // loop tells apart (no adapter chosen; adapter down, which the tray shows as not connected; adapter up
+    // with a gateway that does not answer, which it shows as a connected VPN with no port), so Diagnostics
+    // names what the tray names.
+    private static DiagnosticResult[] NatPmpUnavailableResults()
+    {
+        string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+        if (string.IsNullOrWhiteSpace(adapter))
+            return [new(Checks.VpnConnection, DiagnosticStatus.Fail, "No VPN adapter configured",
+                        "Select the VPN adapter in Settings → General."),
+                    new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable")];
+        if (!VpnAdapter.IsUp(adapter, "DiagnosticsService.NatPmpUnavailableResults"))
+            return [new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{adapter} is not connected",
+                        $"Connect the VPN that owns the '{adapter}' adapter, or select the right adapter in Settings → General."),
+                    new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected")];
+        return [new(Checks.VpnConnection, DiagnosticStatus.Pass, $"{adapter} is connected"),
+                new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"{adapter} gateway did not answer NAT-PMP",
+                    GenericGatewayNoPortHint(RegistrySettingsManager.VpnProviderNatPmp, adapter) ?? "Ensure port forwarding is enabled on a P2P server.")];
+    }
+
+    // The Static port setting the sync loop refuses to run without, in its order (adapter, then port),
+    // with the hint for it; null when both are set.
+    private static (string Message, string Hint)? MissingStaticPortSetting()
+    {
+        if (string.IsNullOrWhiteSpace(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName)))
+            return ("No VPN adapter configured", "Select the VPN adapter in Settings → General.");
+        if (!AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort)))
+            return ("No forwarded port configured", "Enter the port your VPN provider assigned in Settings → General.");
+        return null;
+    }
+
+    // Whether traffic leaves from the address the port is forwarded on - the same comparison the sync
+    // loop makes at a confirming closed check, at any closed check while a mismatch is held, and at an
+    // undetermined one (see VpnExitAddress). Only for a provider that reports the
+    // forward address (NAT-PMP and ProtonVPN); for the others there is nothing to compare, so the row is
+    // left out rather than shown as a permanent Skip. Run whether or not the port is closed: this is the
+    // row that explains a closed "Port reachable" below, and it is the one the user acts on.
+    private static async Task AddVpnExitAddressResultAsync(List<DiagnosticResult> results, IVpnManager vpn, int port, CancellationToken cancellationToken)
+    {
+        if (await vpn.GetForwardAddressAsync(cancellationToken).ConfigureAwait(false) is not System.Net.IPAddress forward) return;
+
+        if (vpn.TunnelAddress is not System.Net.IPAddress local)
+        {
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Skip,
+                "Could not determine (the VPN adapter has no IPv4 address)"));
+            return;
+        }
+        System.Net.IPAddress? exit = await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
+
+        if (exit is null)
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Skip,
+                $"Could not determine (no answer from {AppConstants.StunServerHost})"));
+        else if (exit.Equals(forward))
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Pass,
+                $"Traffic leaves from {exit}, the address the port is forwarded on"));
+        else
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Warn,
+                $"Forwarded on {forward}, but traffic leaves from {exit}",
+                VpnExitAddress.DescribeMismatch(vpn.ForwardSource, port, forward, exit, vpn.IsProtonVpnOverOpenVpn) + "."));
+    }
+
+    // The P2P-server advice fits ProtonVPN and PIA, including NAT-PMP on one of their adapters. A
+    // generic NAT-PMP gateway has no such setting: its mapping request went unanswered or was refused.
+    // Returns null when the P2P-server advice applies. Static port never reaches the rows that use
+    // this, since its port is checked as usable before the connection is.
+    private static string? GenericGatewayNoPortHint(string provider, string vpnName) =>
+        provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) &&
+        VpnProviderRegistry.FindProviderToken(vpnName) is null
+            ? $"Check that the gateway behind the '{vpnName}' adapter accepts NAT-PMP port mapping requests."
+            : null;
 
     // Client running, reachable, in sync, correctly bound, and reachable from outside.
     private static async Task AddClientResultsAsync(List<DiagnosticResult> results, IVpnManager? vpn, int? vpnPort, CancellationToken cancellationToken)
@@ -241,7 +347,10 @@ public static class DiagnosticsService
         if (clientPort is not int cp)
         {
             results.Add(new(Checks.ClientReachable, DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
-                "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
+                client is NicotineClient
+                    ? $"Check that {client.ClientName} is running with the qbPortWeaver Bridge plugin enabled (see {Checks.ClientPlugin} above), " +
+                      "and the Plugin URL and token in Settings. See the log for details."
+                    : "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
             results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, ClientUnreachableSkip));
             if (client.SupportsInterfaceMismatchWarning)
                 results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, ClientUnreachableSkip));
@@ -279,7 +388,7 @@ public static class DiagnosticsService
             // would show a green tick for a check that never ran - and this check exists for exactly
             // the clients where nothing else can see the problem, so a false green is worse than none.
             results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, $"Could not read {client.ClientName}'s settings",
-                "The client answered the first request but not this one. See the log for details."));
+                "The client answered the first request but not this one. Turn on debug logging (Settings → Extra) and run Diagnostics again to see its reply."));
             return;
         }
 
@@ -327,7 +436,7 @@ public static class DiagnosticsService
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The bridge plugin is installed but not enabled",
-                "In Nicotine+, open Preferences → Plugins and tick \"qbPortWeaver Bridge\"."),
+                "In Nicotine+, open Preferences → Plugins, make sure plugins are turned on, and tick \"qbPortWeaver Bridge\"."),
 
             NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 "The bridge plugin is enabled but has not published its connection details",
@@ -339,8 +448,9 @@ public static class DiagnosticsService
         results.Add(result);
     }
 
-    // Ready, but the saved connection settings may still point somewhere else - which works (the
-    // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    // Ready, but the saved connection settings may still point somewhere else - which still works
+    // (the client prefers the connection file from its first request) but leaves the saved settings
+    // out of date, so it is worth flagging.
     // The mismatch rule itself is NicotinePluginInstaller.ConnectionSettingsDiffer, shared with the
     // Settings label so the report and that label cannot disagree about this condition. Here it is
     // applied to the saved registry values, which is what the sync loop will actually use.
@@ -354,7 +464,7 @@ public static class DiagnosticsService
         {
             return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 $"The bridge plugin is on {status.Handshake?.Url}, which differs from the saved settings",
-                "Open Settings, click the refresh button next to the Plugin token, then save.");
+                "Open Settings, click ⟳ next to the Plugin token, then save.");
         }
 
         return new(Checks.ClientPlugin, DiagnosticStatus.Pass,
@@ -489,13 +599,38 @@ public static class DiagnosticsService
             // closed); the others actively probe through their projects' online check services -
             // Nicotine+ via the bridge plugin, which reports undetermined rather than false when
             // the check cannot complete, so it never reaches this branch on a slow result.
-            string hint = client is QBittorrentClient
-                ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
-                : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
+                PortClosedHint(results, client)));
         }
+        else if (HasExitAddressMismatch(results))
+            // The client could not test the port (Deluge's check service filters automated requests), but
+            // the exit-address row already shows peers cannot reach it, so point there.
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)",
+                ExitAddressMismatchHint));
         else
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
+    }
+
+    private const string ExitAddressMismatchHint =
+        $"See {Checks.VpnExitAddress} above: the port is forwarded, but peers are given a different address.";
+
+    private static bool HasExitAddressMismatch(List<DiagnosticResult> results) =>
+        results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Warn);
+
+    // The fix hint for a closed port. A mismatch found by the exit-address row above is the cause,
+    // whatever the client, so it is named rather than sending the user to check port forwarding,
+    // which is working.
+    private static string PortClosedHint(List<DiagnosticResult> results, IManagedClient client)
+    {
+        if (HasExitAddressMismatch(results))
+            return ExitAddressMismatchHint;
+        if (client is QBittorrentClient)
+            return "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed.";
+        // The exit-address cause is offered only when the row above could not rule it out: it is absent
+        // (PIA, Static port) or a Skip. A Pass there has already shown traffic leaves from the forward.
+        bool exitAddressChecked = results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Pass);
+        return "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN" +
+               (exitAddressChecked ? "." : ", or the VPN sends traffic out on a different address than it forwards on.");
     }
 
     /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>
@@ -504,7 +639,7 @@ public static class DiagnosticsService
     /// <summary>
     /// The installed helper service's file version, or <see langword="null"/> when the service is not
     /// installed or its executable cannot be read. Read from the service's on-disk ImagePath so it
-    /// reflects the actually-installed helper (surfacing a version mismatch after a partial upgrade).
+    /// reflects the actually-installed helper; the Helper service row warns when it differs from the app's.
     /// </summary>
     internal static string? GetHelperServiceVersion()
     {

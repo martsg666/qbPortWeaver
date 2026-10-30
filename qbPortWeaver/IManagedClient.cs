@@ -44,8 +44,10 @@ public interface IManagedClient : IDisposable
     /// <summary>
     /// Restarts the client and returns <see langword="true"/> on success.
     /// For clients running as a Windows service, delegates to the helper service (Session 0).
-    /// For clients running as a user-space process, behaviour is client-defined: some kill and
-    /// relaunch the executable; others are no-ops if the port change is already live in-place.
+    /// For clients running as a user-space process, behaviour is client-defined: qBittorrent is killed
+    /// and relaunched; Transmission is asked to close its window first, then whatever remains is killed
+    /// and relaunched; Deluge waits for its config flush, then is killed and relaunched; others are
+    /// no-ops if the port change is already live in-place.
     /// </summary>
     Task<bool> RestartAsync(CancellationToken cancellationToken = default);
 
@@ -79,7 +81,9 @@ public interface IManagedClient : IDisposable
     /// Transmission and Deluge do not expose connection status and always return
     /// <see langword="null"/>.</para>
     /// <para>Callers compare against "disconnected" alone, so the two reporting clients are handled by
-    /// one branch.</para>
+    /// one branch. Only qBittorrent's is acted on today: the sync loop calls this only when
+    /// restart-on-disconnect is set, and that setting exists for qBittorrent alone, so Nicotine+'s
+    /// implementation is not reached from the loop.</para>
     /// </summary>
     Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
@@ -88,7 +92,8 @@ public interface IManagedClient : IDisposable
     /// <see langword="true"/> when open, <see langword="false"/> when closed, or
     /// <see langword="null"/> when it cannot be determined (client unreachable, no internet,
     /// or port-test service unavailable).
-    /// Transmission, Deluge and Nicotine+ actively probe via their projects' online port-check services.
+    /// Transmission, Deluge and Nicotine+ actively probe via their projects' online port-check services;
+    /// Deluge's normally answers undetermined, because its check service filters automated requests.
     /// qBittorrent infers the result from incoming peer activity, so an idle client may report
     /// closed even when the port is open - callers should confirm before alerting.
     /// </summary>

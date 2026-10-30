@@ -42,6 +42,7 @@ public partial class HelpForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        UiHelpers.FitToWorkingArea(this);
         Text = $"{AppIdentity.AppName} | Help";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
@@ -118,7 +119,8 @@ public partial class HelpForm : Form
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0)
+            && ActiveControl is not ComboBox { DroppedDown: true })
         {
             Close();
             e.Handled = true;

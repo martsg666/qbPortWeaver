@@ -7,7 +7,8 @@ public partial class SettingsForm : Form
     internal bool SettingsSaved { get; private set; }
 
     private const string DiscoveringAdaptersPlaceholder = "Discovering adapters…";
-    private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
+    private const string NoAdaptersFoundPlaceholder = "No adapters found";
+    private const string SelectAdapterPlaceholder = "Select the VPN adapter";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
     // How often the Nicotine+ plugin status line re-checks itself while the dialog is open. What it
@@ -37,8 +38,14 @@ public partial class SettingsForm : Form
     // a discovery every time it runs, and a restore runs it a second time while the first may still
     // be probing an unresponsive gateway - each carrying the adapter name read when it started. Both
     // continuations write the same combo, so without superseding the older one the stale pre-restore
-    // name can land last and be saved over the restored one.
+    // name can land last and be saved over the restored one. Switching between NAT-PMP and Static
+    // port supersedes the same way, since the two fill the combo from different lists.
     private CancellationTokenSource? _adapterDiscoveryCts;
+
+    // The provider the adapter combo was last filled for (NAT-PMP or Static port), or null when it
+    // has not been filled for either. NAT-PMP lists only adapters whose gateway answers NAT-PMP,
+    // Static port lists every adapter that is up with an IPv4 address, so a switch between them needs a fresh list.
+    private string? _adapterListProvider;
 
     private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
 
@@ -124,16 +131,17 @@ public partial class SettingsForm : Form
     // Wire up tooltips for each setting control
     private void SetupTooltips()
     {
-        toolTip.SetToolTip(cboVpnProvider, "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
-        toolTip.SetToolTip(btnDetectVpn, "Detect an installed VPN provider and select it (NAT-PMP gateways cannot be detected - select NAT-PMP manually)");
-        toolTip.SetToolTip(cboNatPmpAdapter, "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
+        toolTip.SetToolTip(cboVpnProvider, "VPN provider used for port detection (Disabled, ProtonVPN, PIA, NAT-PMP, or Static port for a provider that assigns a permanent forwarded port)");
+        toolTip.SetToolTip(btnDetectVpn, "Detect an installed VPN provider and select it (NAT-PMP and Static port cannot be detected - select them manually)");
+        toolTip.SetToolTip(cboVpnAdapter, "Network adapter of the VPN: the one whose gateway maps the port for NAT-PMP, or the one that must be up for Static port (only applies to those two)");
+        toolTip.SetToolTip(nudStaticPort, "The forwarded port your VPN provider assigned to your account (only applies when Static port is selected)");
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
-        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords and the TMDB API key are not included, because Windows ties them to this user account on this machine.");
-        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords and the TMDB API key are left as they are.");
+        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords, the TMDB API key and the Nicotine+ token are not included, because Windows ties them to this user account on this machine.");
+        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords, the TMDB API key and the Nicotine+ token are left as they are.");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
@@ -145,7 +153,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
-        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected, at most 3 times in a row until it reconnects");
         // Covers all three behaviours this one checkbox gates, not just the identifier case it was
         // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
         // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one
@@ -189,19 +197,19 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkNicotineWarnOnInterfaceMismatch, "Show a warning when Nicotine+'s network interface does not match the configured VPN provider");
         toolTip.SetToolTip(nudNicotineDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(btnInstallNicotinePlugin, "Install the qbPortWeaver bridge plugin into Nicotine+. Nicotine+ has no remote control of its own, so the plugin is what makes port sync possible.");
-        toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after a successful port update (leave empty to disable)");
+        toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after the port is updated, also when restarting the client afterwards failed (leave empty to disable)");
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkResyncOnNetworkChange, "When a network or VPN connection change is detected, run a sync right away instead of waiting for the next interval - so the client follows a VPN reconnect within seconds. Pausing still suppresses the cycle.");
         toolTip.SetToolTip(chkWaitForVpnOnStartup, "For the first minute and a half after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected or applying the default port. The port syncs as soon as the VPN comes up.");
-        toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
+        toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed); Nicotine+ asks the bridge plugin, which uses Nicotine+'s own checker when available and otherwise the Soulseek port-test service. Runs after a port change and periodically.");
         // The "stops after 3" clause sits where the port-closed tooltip below puts its own bound, so the
         // two triggers read alike: fires when X, stops at Y. Without it this checkbox was the only one
         // of the pair that appeared unlimited - the exact belief the cap exists to make false. Wording
         // matches the Status panel row and the log line so a user recognises one rule, not two.
-        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Stops after 3 attempts that do not restore a forwarded port, and resumes once one is found. Client-side problems do not count - auto-recovery cannot fix those.");
+        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no installed ProtonVPN or PIA) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Stops after 3 attempts that do not restore a forwarded port, and resumes once one is found. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again, or the VPN provider or adapter changes. If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one (none when the gateway is itself behind another NAT, where a reconnect cannot help). Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
         toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way).");
@@ -209,12 +217,14 @@ public partial class SettingsForm : Form
 
     private void LoadSettings()
     {
-        // NAT-PMP placeholder must be in place before cboVpnProvider is set so that
-        // cboVpnProvider_SelectedIndexChanged sees discoveryPending = true and disables
-        // all adapter controls correctly while discovery is in flight.
-        cboNatPmpAdapter.Items.Clear();
-        cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
-        cboNatPmpAdapter.SelectedIndex = 0;
+        // The placeholder must be in place before cboVpnProvider is set, so the discovery that
+        // cboVpnProvider_SelectedIndexChanged starts reads the saved adapter rather than a stale
+        // on-screen one. Clearing _adapterListProvider makes it start one even when a restore leaves
+        // the provider unchanged, since the saved adapter may have changed with it.
+        cboVpnAdapter.Items.Clear();
+        cboVpnAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
+        cboVpnAdapter.SelectedIndex = 0;
+        _adapterListProvider = null;
 
         // General
         cboVpnProvider.Items.Clear();
@@ -223,7 +233,8 @@ public partial class SettingsForm : Form
             RegistrySettingsManager.VpnProviderDisabled,
             RegistrySettingsManager.VpnProviderProtonVpn,
             RegistrySettingsManager.VpnProviderPia,
-            RegistrySettingsManager.VpnProviderNatPmp
+            RegistrySettingsManager.VpnProviderNatPmp,
+            RegistrySettingsManager.VpnProviderStaticPort
         ]);
         cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
         if (cboVpnProvider.SelectedIndex < 0)
@@ -234,10 +245,20 @@ public partial class SettingsForm : Form
         cboClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         if (cboClient.SelectedIndex < 0) cboClient.SelectedIndex = 0;
 
-        // NAT-PMP adapter discovery is async to avoid blocking the UI.
-        // Launched after VPN provider is set so the completion callback reads the correct state.
-        string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-        _ = DiscoverNatPmpAdaptersAsync(savedAdapter); // fire-and-forget; exceptions are handled inside DiscoverNatPmpAdaptersAsync
+        // A provider that uses an adapter has already started discovery from the selection handler.
+        // Any other shows the saved adapter, disabled, until the user switches to one that uses it.
+        // Superseding first keeps a discovery from before a restore from landing over this. With none
+        // saved the box stays empty: no discovery ran, so "No adapters found" would be untrue.
+        if (!UsesAdapter(SelectedVpnProvider))
+        {
+            _ = RenewAdapterDiscoveryTokenAsync();
+            string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+            if (savedAdapter.Length == 0) cboVpnAdapter.Items.Clear();
+            else PopulateAdapterCombo([], savedAdapter);
+        }
+        nudStaticPort.Value = Math.Clamp(
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort),
+            (int)nudStaticPort.Minimum, (int)nudStaticPort.Maximum);
 
         nudUpdateInterval.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),
@@ -333,12 +354,12 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
         RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, (int)nudUpdateInterval.Value);
-        // If discovery is still pending (combo disabled), preserve the existing value to avoid
-        // saving the "Discovering adapters…" placeholder text as the adapter name
-        string adapterName = cboNatPmpAdapter.Enabled
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
-            : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
+        // With no real choice on screen (discovery pending, combo disabled, or a placeholder), keep
+        // the saved value rather than storing placeholder text as the adapter name.
+        string adapterName = SelectedAdapterName
+            ?? RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName, adapterName);
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort, (int)nudStaticPort.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled, chkAutoRecovery.Checked);
         RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, (int)nudRecoveryCycles.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled, chkPortClosedRecovery.Checked);
@@ -406,20 +427,35 @@ public partial class SettingsForm : Form
     /// through here means the backup cannot capture a state the validation would have rejected.</remarks>
     private bool TryCommitSettings()
     {
-        if (cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp &&
-            cboNatPmpAdapter.Enabled &&
-            cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
+        string? provider = SelectedVpnProvider;
+        if (UsesAdapter(provider) &&
+            cboVpnAdapter.Enabled &&
+            cboVpnAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
-            ThemedMessageBox.Warn(
-                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.");
+            ThemedMessageBox.Warn(provider == RegistrySettingsManager.VpnProviderNatPmp
+                ? "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry."
+                : "No active network adapters were found.\n\nConnect the VPN so its adapter is up, then click ⟳ to retry.");
+            return false;
+        }
+
+        if (UsesAdapter(provider) &&
+            cboVpnAdapter.Enabled &&
+            cboVpnAdapter.SelectedItem?.ToString() == SelectAdapterPlaceholder)
+        {
+            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, " +
+                "would apply the port while the VPN is down.\n\nIf it is not listed, connect the VPN so its adapter is up, then click ⟳.");
+            return false;
+        }
+
+        if (provider == RegistrySettingsManager.VpnProviderStaticPort && nudStaticPort.Value == 0)
+        {
+            ThemedMessageBox.Warn("Enter the forwarded port your VPN provider assigned to you.");
             return false;
         }
 
         var (clientName, controls) = SelectedClient;
         string urlText = controls.Url.Text.Trim();
-        if (!string.IsNullOrEmpty(urlText) &&
-            (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
-             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        if (!string.IsNullOrEmpty(urlText) && !UiHelpers.IsHttpUrl(urlText))
         {
             ThemedMessageBox.Warn(
                 $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://");
@@ -497,7 +533,7 @@ public partial class SettingsForm : Form
         if (result.Success)
             ThemedMessageBox.Info($"Your settings were saved and backed up.\n\n{result.Message}");
         else
-            ThemedMessageBox.Warn(result.Message);
+            ThemedMessageBox.Warn($"Your settings were saved, but they were not backed up.\n\n{result.Message}");
 
         // After the export, never before: TryCommitSettings above has already stored a theme change,
         // and an accepted restart here would otherwise end the process before the file was written.
@@ -594,8 +630,8 @@ public partial class SettingsForm : Form
 
     // Detects which VPN provider is installed on this machine and pre-fills the provider selection, so
     // the user does not have to know which of the supported providers qbPortWeaver drives. Only the
-    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP is never detected (no
-    // machine-local service to find), so it remains the manual choice for other gateways.
+    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP and Static port are never
+    // detected (no machine-local service to find), so they remain the manual choices for other VPNs.
     // Detection runs off the UI thread: DetectAll enumerates every Windows service through the SCM and
     // reads the status of each match, which is fast on a home machine and slow on a domain-joined one
     // (or one with a service stuck pending). The button is disabled for the duration so the click
@@ -634,7 +670,7 @@ public partial class SettingsForm : Form
         if (detected.Count == 0)
         {
             ThemedMessageBox.Info(
-                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, or choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it.");
+                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it, or {RegistrySettingsManager.VpnProviderStaticPort} if your provider assigned you a permanent forwarded port.");
             return;
         }
 
@@ -685,32 +721,63 @@ public partial class SettingsForm : Form
         tabClient.Text = cboClient.SelectedItem?.ToString() ?? selectedName;
     }
 
+    private string? SelectedVpnProvider => cboVpnProvider.SelectedItem?.ToString();
+
+    // The adapter the user has chosen on screen, or null when the combo holds no real choice:
+    // disabled (discovery pending or a provider without an adapter) or showing a placeholder.
+    private string? SelectedAdapterName =>
+        cboVpnAdapter.Enabled && cboVpnAdapter.SelectedItem?.ToString() is { Length: > 0 } name &&
+        name is not (DiscoveringAdaptersPlaceholder or NoAdaptersFoundPlaceholder or SelectAdapterPlaceholder)
+            ? name
+            : null;
+
+    // NAT-PMP and Static port are the providers that need an adapter chosen in Settings.
+    private static bool UsesAdapter(string? provider) =>
+        provider is RegistrySettingsManager.VpnProviderNatPmp or RegistrySettingsManager.VpnProviderStaticPort;
+
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        bool isDisabled = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderDisabled;
-        SetPortSyncControlsEnabled(!isDisabled);
+        string? provider = SelectedVpnProvider;
+        SetPortSyncControlsEnabled(provider != RegistrySettingsManager.VpnProviderDisabled);
 
-        // Only enable the adapter combo and refresh button if NAT-PMP is selected AND discovery has finished
-        // (discovery replaces the placeholder and re-enables them via DiscoverNatPmpAdaptersAsync)
-        bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-        bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
-                                cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
-        SetAdapterControlsEnabled(!isDisabled && isNatPmp && !discoveryPending);
+        bool usesAdapter = UsesAdapter(provider);
+        if (usesAdapter && provider != _adapterListProvider)
+        {
+            // The combo holds the other provider's list, or none yet: fetch this one's.
+            StartAdapterDiscovery(keepOnScreenChoice: false);
+        }
+        else
+        {
+            // Only enable the adapter combo and refresh button once discovery has finished
+            // (discovery replaces the placeholder and re-enables them via DiscoverVpnAdaptersAsync)
+            bool discoveryPending = cboVpnAdapter.Items.Count == 1 &&
+                                    cboVpnAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
+            SetAdapterControlsEnabled(usesAdapter && !discoveryPending);
+        }
+
+        bool isStaticPort = provider == RegistrySettingsManager.VpnProviderStaticPort;
+        lblStaticPort.Enabled = isStaticPort;
+        nudStaticPort.Enabled = isStaticPort;
     }
 
-    private void btnRefreshAdapters_Click(object? sender, EventArgs e)
-    {
-        // Preserve current selection if it is a valid adapter name (not a placeholder)
-        string current = cboNatPmpAdapter.Enabled &&
-                         cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
-            : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
+    private void btnRefreshAdapters_Click(object? sender, EventArgs e) => StartAdapterDiscovery(keepOnScreenChoice: true);
 
-        cboNatPmpAdapter.Items.Clear();
-        cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
-        cboNatPmpAdapter.SelectedIndex = 0;
+    // Replaces the adapter list with a fresh one for the selected provider, keeping the saved adapter.
+    // A refresh also keeps the adapter chosen on screen. A provider switch does not: NAT-PMP selects
+    // its first answering adapter on its own when nothing is saved, often the LAN adapter, and carrying
+    // that into Static port would skip the "Select the VPN adapter" placeholder that requireChoice
+    // puts there to keep the LAN adapter from being saved as the VPN adapter.
+    private void StartAdapterDiscovery(bool keepOnScreenChoice)
+    {
+        string current = (keepOnScreenChoice ? SelectedAdapterName : null)
+            ?? RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+
+        _adapterListProvider = SelectedVpnProvider;
+        cboVpnAdapter.Items.Clear();
+        cboVpnAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
+        cboVpnAdapter.SelectedIndex = 0;
         SetAdapterControlsEnabled(false);
-        _ = DiscoverNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside DiscoverNatPmpAdaptersAsync
+        _ = DiscoverVpnAdaptersAsync(_adapterListProvider, current); // fire-and-forget; exceptions are handled inside DiscoverVpnAdaptersAsync
     }
 
     private void btnBrowseQBittorrentExePath_Click(object? sender, EventArgs e) => BrowseForExe("qBittorrent", txtQBittorrentExePath);
@@ -739,7 +806,9 @@ public partial class SettingsForm : Form
         if (!string.IsNullOrWhiteSpace(target.Text) && File.Exists(target.Text))
             dlg.InitialDirectory = Path.GetDirectoryName(target.Text) ?? string.Empty;
 
-        if (dlg.ShowDialog() == DialogResult.OK)
+        // Owned by the Settings form, as every other dialog here is; the method is static, so the
+        // owner is found through the text box being filled.
+        if (dlg.ShowDialog(target.FindForm()) == DialogResult.OK)
             target.Text = dlg.FileName;
     }
 
@@ -755,11 +824,10 @@ public partial class SettingsForm : Form
         if (!confirm) return;
 
         string provider = cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled;
-        // While discovery is pending the combo is disabled and holds placeholder text, not an
-        // adapter name (same guard as SaveSettings); an empty adapter takes the clean no-manager path.
-        string adapter = cboNatPmpAdapter.Enabled
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
-            : string.Empty;
+        // Placeholder text is never passed on as an adapter name: for Static port any non-empty name
+        // builds a manager, so the helper would be asked to cycle an adapter that does not exist. An
+        // empty adapter takes the clean no-manager path and reports that the test could not run.
+        string adapter = SelectedAdapterName ?? string.Empty;
 
         btnTestRecovery.Enabled = false;
         UseWaitCursor = true;
@@ -844,8 +912,9 @@ public partial class SettingsForm : Form
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
             ThemedMessageBox.Info(
                 "No connection details were found.\n\n" + DescribeNextStep(status) +
-                "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
-                "Nicotine+ and enter the address and token here by hand.");
+                "\n\nIf a non-portable Nicotine+ runs under another Windows account, or the plugin's connection file " +
+                "setting points elsewhere, run /qbpw-connection-file in a Nicotine+ private chat, open " +
+                "the file it lists and copy its url and token here.");
             RefreshNicotinePluginStatus();
             return;
         }
@@ -880,7 +949,7 @@ public partial class SettingsForm : Form
             // memory when it exits, discarding anything changed underneath it.
             ThemedMessageBox.Info(
                 $"Plugin installed to:\n{install.Message}\n\n" +
-                "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
+                "Nicotine+ is running, so enable it there: open Preferences → Plugins, make sure plugins are turned on, tick " +
                 "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
                 "Then click ⟳ here to pick up the connection details.\n\n" +
                 "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.");
@@ -891,13 +960,13 @@ public partial class SettingsForm : Form
         var choice = ThemedMessageBox.Confirm(
             $"Plugin installed to:\n{install.Message}\n\n" +
             "Nicotine+ is closed, so it can be enabled for you now. Enable it?\n\n" +
-            "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.");
+            "Your current Nicotine+ configuration will be backed up first, and only its plugin settings are changed.");
 
         if (!choice)
         {
             ThemedMessageBox.Info(
-                "Plugin installed but not enabled.\n\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
-                "Preferences → Plugins, then click ⟳ here.");
+                "Plugin installed but not enabled.\n\nIn Nicotine+, open Preferences → Plugins, make sure plugins are " +
+                "turned on, and tick \"qbPortWeaver Bridge\", then click ⟳ here.");
             RefreshNicotinePluginStatus();
             return;
         }
@@ -1003,7 +1072,8 @@ public partial class SettingsForm : Form
 
         btnInstallNicotinePlugin.Text = status.State switch
         {
-            NicotinePluginState.NotInstalled => "Install Plugin…",
+            // Nothing can be installed yet either way; clicking reports the missing data folder.
+            NicotinePluginState.NotInstalled or NicotinePluginState.DataFolderMissing => "Install Plugin…",
             NicotinePluginState.Outdated => "Update Plugin…",
             NicotinePluginState.NotEnabled => "Enable Plugin…",
             _ => "Reinstall Plugin…"
@@ -1023,7 +1093,7 @@ public partial class SettingsForm : Form
         NicotinePluginState.Outdated =>
             "The installed bridge plugin differs from the one this build ships. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
-            "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
+            "The plugin is installed but not enabled. In Nicotine+, open Preferences → Plugins, make sure plugins are turned on, and tick \"qbPortWeaver Bridge\".",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."
     };
 
@@ -1035,9 +1105,7 @@ public partial class SettingsForm : Form
     // and the button re-enabled in finally, even on cancel or form disposal.
     private async Task RunConnectionTestAsync(Func<IManagedClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
-        if (string.IsNullOrEmpty(url) ||
-            !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!UiHelpers.IsHttpUrl(url))
         {
             ThemedMessageBox.Warn(
                 $"Enter a valid {clientName} URL starting with http:// or https:// before testing.");
@@ -1145,10 +1213,13 @@ public partial class SettingsForm : Form
         lblPortClosedChecksUnit.Enabled = closedChecksEnabled;
     }
 
-    // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
+    // Enables or disables the port-sync controls: client selection, port check, auto-recovery, every
+    // client section and the post-update command. The rest of the dialog (VPN provider with its adapter
+    // and Static port rows, update interval, notification and startup options, colour theme, debug
+    // mode) is left alone.
     private void SetPortSyncControlsEnabled(bool enabled)
     {
-        // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+        // General section - client and auto-recovery controls (adapter and Static port rows handled by cboVpnProvider_SelectedIndexChanged)
         lblClient.Enabled = enabled;
         cboClient.Enabled = enabled;
         btnDetectClient.Enabled = enabled;
@@ -1167,8 +1238,8 @@ public partial class SettingsForm : Form
 
     private void SetAdapterControlsEnabled(bool enabled)
     {
-        lblNatPmpAdapter.Enabled = enabled;
-        cboNatPmpAdapter.Enabled = enabled;
+        lblVpnAdapter.Enabled = enabled;
+        cboVpnAdapter.Enabled = enabled;
         btnRefreshAdapters.Enabled = enabled;
     }
 
@@ -1196,36 +1267,50 @@ public partial class SettingsForm : Form
     // not change any setting until the VPN was back. The placeholder now appears only when nothing is
     // saved either, which is the one case where there is genuinely no adapter to keep.
     // Matched ignoring case, as the sync loop matches adapter names.
-    private void PopulateAdapterCombo(IEnumerable<string> discovered, string savedAdapter)
+    //
+    // requireChoice is for Static port, whose list is every adapter that is up (with an IPv4 address) rather than the few
+    // that answer NAT-PMP. Its first entry is usually the physical LAN adapter, so with nothing saved
+    // the combo opens on a placeholder that cannot be saved instead of selecting that entry: an OK
+    // would otherwise store the LAN adapter as the VPN adapter, and auto-recovery would cycle it.
+    private void PopulateAdapterCombo(IEnumerable<string> discovered, string savedAdapter, bool requireChoice = false)
     {
-        cboNatPmpAdapter.Items.Clear();
+        cboVpnAdapter.Items.Clear();
         foreach (string name in discovered)
-            cboNatPmpAdapter.Items.Add(name);
+            cboVpnAdapter.Items.Add(name);
 
-        string? match = cboNatPmpAdapter.Items.Cast<string>()
+        string? match = cboVpnAdapter.Items.Cast<string>()
             .FirstOrDefault(n => n.Equals(savedAdapter, StringComparison.OrdinalIgnoreCase));
         if (match is null && !string.IsNullOrEmpty(savedAdapter))
         {
-            cboNatPmpAdapter.Items.Insert(0, savedAdapter);
+            cboVpnAdapter.Items.Insert(0, savedAdapter);
             match = savedAdapter;
         }
 
-        if (cboNatPmpAdapter.Items.Count == 0)
-            cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+        if (cboVpnAdapter.Items.Count == 0)
+            cboVpnAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+        else if (match is null && requireChoice)
+            cboVpnAdapter.Items.Insert(0, SelectAdapterPlaceholder);
 
         if (match is not null)
-            cboNatPmpAdapter.SelectedItem = match;
+            cboVpnAdapter.SelectedItem = match;
         else
-            cboNatPmpAdapter.SelectedIndex = 0;
+            cboVpnAdapter.SelectedIndex = 0;
     }
 
-    private async Task DiscoverNatPmpAdaptersAsync(string savedAdapter)
+    // Static port lists every adapter that is up with an IPv4 address, which is immediate. NAT-PMP probes each adapter's
+    // gateway and lists only those that answer.
+    private async Task DiscoverVpnAdaptersAsync(string? provider, string savedAdapter)
     {
         try
         {
             var cancellationToken = await RenewAdapterDiscoveryTokenAsync();
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: cancellationToken);
+            IEnumerable<string> adapters = provider == RegistrySettingsManager.VpnProviderStaticPort
+                ? StaticPortManager.GetActiveAdapterNames()
+                : (await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: cancellationToken)).Select(a => a.ProviderName);
+            // A switch to the other adapter provider while the probes ran supersedes this result even
+            // if the probes finished without observing the cancellation.
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -1233,13 +1318,12 @@ public partial class SettingsForm : Form
             if (IsDisposed) return;
             try
             {
-                PopulateAdapterCombo(adapters.Select(a => a.ProviderName), savedAdapter);
-                bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-                SetAdapterControlsEnabled(isNatPmp);
+                PopulateAdapterCombo(adapters, savedAdapter, requireChoice: provider == RegistrySettingsManager.VpnProviderStaticPort);
+                SetAdapterControlsEnabled(UsesAdapter(SelectedVpnProvider));
             }
             catch (ObjectDisposedException)
             {
-                LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during adapter update");
+                LogManager.Instance.LogDebug("SettingsForm.DiscoverVpnAdaptersAsync: Form disposed during adapter update");
             }
         }
         catch (OperationCanceledException)
@@ -1253,14 +1337,13 @@ public partial class SettingsForm : Form
             if (IsDisposed) return;
             try
             {
-                LogManager.Instance.LogDebug($"SettingsForm.DiscoverNatPmpAdaptersAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"SettingsForm.DiscoverVpnAdaptersAsync: {ex.Message}");
                 PopulateAdapterCombo([], savedAdapter);
-                bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-                SetAdapterControlsEnabled(isNatPmp);
+                SetAdapterControlsEnabled(UsesAdapter(SelectedVpnProvider));
             }
             catch (ObjectDisposedException)
             {
-                LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during error recovery");
+                LogManager.Instance.LogDebug("SettingsForm.DiscoverVpnAdaptersAsync: Form disposed during error recovery");
             }
         }
     }

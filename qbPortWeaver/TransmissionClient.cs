@@ -16,7 +16,11 @@ public sealed class TransmissionClient : ManagedClientBase
     // that point overwrites the change with the stale Qt-side value. 5s matches the default
     // refresh - if a future Qt build changes the default this delay needs updating.
     private const int GracefulShutdownWaitMs = 5000;
-    private const int WindowCloseWaitMs = 3000;
+    // How long the Qt client gets to exit after its window is closed. It writes settings.json only on
+    // a normal exit, after announcing that it is stopping, so a force-close before then discards
+    // every preference changed since it started - the RPC password included. A few seconds was not
+    // always enough; the exit is polled, so a quick close still restarts quickly.
+    private const int WindowCloseWaitMs = 20000;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
     private const string JsonContentType = "application/json";
@@ -27,12 +31,13 @@ public sealed class TransmissionClient : ManagedClientBase
     private readonly string _userName;
     private string? _sessionId;
     // Sentinel values: string.Empty = not yet resolved or last lookup failed; non-empty = cached name.
-    // null is never assigned at runtime - the field starts as Empty and only transitions to non-empty
-    // on a successful lookup. The nullable type is required by the volatile reference contract.
+    // null is never assigned at runtime - the field starts as Empty, becomes non-empty on a successful
+    // lookup, and returns to Empty only when that service turns out to be gone (see IsRunning). The nullable type is required by the volatile reference contract.
     // Static so the SCM enumeration persists across sync-cycle instances.
-    // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
+    // Same Empty-sentinel volatile cache as ServiceExeCache, which PiaVpnManager and VpnRegistryConfig share.
     // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
     private static volatile string? _resolvedServiceName = string.Empty;
+    private const int ErrorServiceDoesNotExist = 1060; // ERROR_SERVICE_DOES_NOT_EXIST
 
     /// <inheritdoc/>
     public override string ClientName => "Transmission";
@@ -67,7 +72,15 @@ public sealed class TransmissionClient : ManagedClientBase
                 sc.Refresh();
                 if (sc.Status == ServiceControllerStatus.Running) return true;
             }
-            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
+            // The service no longer exists (uninstalled while the app runs): forget the cached name, so the
+            // next lookup finds the process-mode setup instead of failing the service path every cycle. Only
+            // for that error: an access-denied one, which ServiceController wraps the same way, keeps the name.
+            catch (InvalidOperationException ex) when (ex.InnerException is System.ComponentModel.Win32Exception { NativeErrorCode: ErrorServiceDoesNotExist })
+            {
+                _resolvedServiceName = string.Empty;
+                LogManager.Instance.LogDebug($"TransmissionClient.IsRunning: service '{serviceName}' no longer exists - looking it up again");
+            }
+            catch { } // NOSONAR S108 - any other ServiceController failure (access denied, for one) falls through to the process-based check in the base class
         }
 
         return base.IsRunning();
@@ -78,7 +91,7 @@ public sealed class TransmissionClient : ManagedClientBase
     {
         string? serviceName = GetEffectiveServiceName();
         if (serviceName is not null)
-            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
+            return await RestartServiceModeAsync(serviceName, "start", cancellationToken).ConfigureAwait(false);
 
         return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -86,8 +99,8 @@ public sealed class TransmissionClient : ManagedClientBase
     /// <inheritdoc/>
     /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
     /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
-    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
-    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+    /// confirms a system-wide location, or the daemon RPC is unreachable (rare here, since the restart
+    /// follows a port change the RPC has just accepted, so service mode is assumed). Process mode: no
     /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
     /// running instead).</remarks>
     public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
@@ -97,9 +110,9 @@ public sealed class TransmissionClient : ManagedClientBase
         bool? detected = serviceName is not null
             ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
             : null;
-        // When a service is installed but RPC is unreachable, assume service mode: the daemon
-        // being hung is the most likely cause of restart being triggered, and a process-mode
-        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+        // When a service is installed but RPC is unreachable, assume service mode: that is rare, since
+        // the restart follows a port change the RPC has just accepted, and a process-mode launch would
+        // bypass the installed service. A wrong guess here is recoverable - the helper-side
         // restart of a dormant service either succeeds or fails cleanly.
         bool isService = serviceName is not null && (detected ?? true);
         string modeDescription;
@@ -111,7 +124,7 @@ public sealed class TransmissionClient : ManagedClientBase
             modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
         LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
         return isService
-            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
+            ? await RestartServiceModeAsync(serviceName!, "restart", cancellationToken).ConfigureAwait(false)
             : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -130,8 +143,7 @@ public sealed class TransmissionClient : ManagedClientBase
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
             // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            if (TryGetRpcFailure(root, out var resultElement))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {resultElement}", LogLevel.Error);
                 return (null, null);
@@ -174,16 +186,18 @@ public sealed class TransmissionClient : ManagedClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                LogSetPortHttpFailure(response);
                 return false;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!string.Equals(doc.RootElement.GetStringOrNull(JsonPropResult), RpcResultSuccess,
-                    StringComparison.OrdinalIgnoreCase))
+            var result = doc.RootElement.GetStringOrNull(JsonPropResult);
+            if (!string.Equals(result, RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
+                LogManager.Instance.LogMessage(
+                    $"{ClientName} RPC returned non-success result for session-set: {(result is null ? "no result" : $"'{result}'")}",
+                    LogLevel.Error);
                 return false;
             }
         }
@@ -239,9 +253,11 @@ public sealed class TransmissionClient : ManagedClientBase
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
-            // user to consult the log, so a silent return would send them somewhere empty.
+            using var response = await SendRpcAsync(body, LogLevel.Debug, cancellationToken).ConfigureAwait(false);
+            // Every null exit is logged, at Debug: Diagnostics reports an unread check as Skip and
+            // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+            // than Warn because the sync cycle also runs this every few cycles, and a persistent
+            // failure here would otherwise badge the tray each time for an advisory check.
             if (response is null)
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: no RPC response");
@@ -250,6 +266,14 @@ public sealed class TransmissionClient : ManagedClientBase
 
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
+            // Checked as GetPreferencesAsync does: a failed RPC can still carry an empty "arguments"
+            // object, which would otherwise read as "no conflicts" - a green Pass for a check that
+            // never read the settings.
+            if (TryGetRpcFailure(doc.RootElement, out var resultElement))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.GetConflictingSettingsAsync: RPC returned non-success result: {resultElement}");
+                return null;
+            }
             if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: 'arguments' key missing from RPC response");
@@ -267,7 +291,7 @@ public sealed class TransmissionClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }
@@ -315,7 +339,9 @@ public sealed class TransmissionClient : ManagedClientBase
         return found;
     }
 
-    private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
+    // action names the attempt in the failure lines: a force-start goes through the same helper restart
+    // (which starts a stopped service), but nothing was running, so "restart" would misdescribe it.
+    private async Task<bool> RestartServiceModeAsync(string serviceName, string action, CancellationToken cancellationToken)
     {
         try
         {
@@ -327,13 +353,13 @@ public sealed class TransmissionClient : ManagedClientBase
 
             if (!helperResult.Completed || helperResult.ErrorCount > 0)
             {
-                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart did not complete cleanly", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' {action} did not complete cleanly", LogLevel.Error);
                 return false;
             }
 
             if (!IsRunning())
             {
-                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come back up after restart", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come up after the {action}", LogLevel.Error);
                 return false;
             }
 
@@ -348,7 +374,7 @@ public sealed class TransmissionClient : ManagedClientBase
         // cancellation, then catch broadly so LogHttpException can classify the timeout.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            LogManager.Instance.LogMessage($"Failed to restart {ClientName} service: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Failed to {action} {ClientName} service: {ex.Message}", LogLevel.Error);
             return false;
         }
     }
@@ -362,19 +388,36 @@ public sealed class TransmissionClient : ManagedClientBase
             // Wait for the Qt client to poll and reflect the port change before closing
             await Task.Delay(GracefulShutdownWaitMs, cancellationToken).ConfigureAwait(false);
 
-            // Close the main window cleanly; the app saves settings on exit
+            // Close the main window cleanly; the app saves settings on exit. CloseMainWindow returns false
+            // when there is no window to close - Transmission hidden in the notification area - and then no
+            // close is coming, so the wait below is skipped.
+            bool closeSent = false;
+            bool anyFound = false;
             foreach (var proc in Process.GetProcessesByName(ProcessName))
             {
+                anyFound = true;
                 // CloseMainWindow can fail if the process has already exited; safe to ignore.
-                try { proc.CloseMainWindow(); }
+                try { closeSent |= proc.CloseMainWindow(); }
                 catch { } // NOSONAR S108
                 finally { proc.Dispose(); }
             }
+            // Nothing running means nothing to close (it exited on its own): not the hidden-window case.
+            if (!anyFound) closeSent = true;
 
-            // Wait for graceful exit, then hard-kill any survivors
-            await Task.Delay(WindowCloseWaitMs, cancellationToken).ConfigureAwait(false);
-            if (IsRunning() && !await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
-                return false;
+            // Wait for a graceful exit, then hard-kill any survivors - said at Warn, because a forced
+            // close loses whatever the user changed in Transmission since it started. With its
+            // notification-area icon on, Transmission hides its window instead of quitting when the window
+            // is closed, which is the likeliest reason it is still running, so the Warn names that setting.
+            if (!closeSent || !await WaitForProcessExitAsync(WindowCloseWaitMs, cancellationToken).ConfigureAwait(false))
+            {
+                LogManager.Instance.LogMessage(
+                    $"{ClientName} did not close" + (closeSent ? $" within {WindowCloseWaitMs / 1000} seconds" : string.Empty) +
+                    " - it is probably set to stay in the notification area when its window closes (Edit → Preferences → Desktop); " +
+                    "force-closing it, so settings changed in Transmission since it started may not be saved",
+                    LogLevel.Warn);
+                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
+                    return false;
+            }
 
             ResetAuthState();
             return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
@@ -533,4 +576,11 @@ public sealed class TransmissionClient : ManagedClientBase
             new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         return client;
     }
+
+    // A "result" present and other than "success" is an RPC failure. A missing one is not decided here:
+    // session-get and the conflict check fall through to their own missing-"arguments" handling, while
+    // session-set, which has nothing else to read, treats a missing result as a failure on its own.
+    private static bool TryGetRpcFailure(JsonElement root, out JsonElement result) =>
+        root.TryGetProperty(JsonPropResult, out result) &&
+        !string.Equals(result.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase);
 }

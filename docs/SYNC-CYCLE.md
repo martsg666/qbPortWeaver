@@ -3,7 +3,7 @@
 > Companion to the [README](../README.md), which covers installation, settings and day-to-day use.
 > This document is the implementation reference: what each cycle does and why it decides as it does.
 
-This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running, so a slow library scan cannot delay port sync or pile up imports on slow storage.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running or the Media Manager window is busy, so a slow library scan cannot delay port sync or pile up imports on slow storage.
 
 The tray menu's **Pause Syncing** item skips entire cycles (port sync and the Media Manager kick-off) until resumed; the tray icon shows the paused state and **Sync Port Now** still runs a single cycle on demand. The paused state is in-memory only - a restart always resumes syncing.
 
@@ -41,10 +41,12 @@ flowchart TD
     COMPARE -- Yes --> DONE_CHECK
     COMPARE -- No --> UPDATE[Set new port in client]
 
-    UPDATE --> RESTART{Restart enabled?}
+    UPDATE -- written --> RESTART{Restart enabled?}
+    UPDATE -- failed --> ERROR_UPDATE([ERROR: port write or restart failed\nretried next cycle if the write failed])
     RESTART -- Yes --> DO_RESTART[Restart client]
     RESTART -- No --> DONE_CHECK
-    DO_RESTART --> DONE_CHECK
+    DO_RESTART -- restarted --> DONE_CHECK
+    DO_RESTART -- failed --> ERROR_UPDATE
 
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
@@ -64,15 +66,16 @@ flowchart TD
     ERROR_PORT --> FINALLY
     ERROR_PF --> FINALLY
     ERROR_CLIENT --> FINALLY
+    ERROR_UPDATE --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
-    FINALLY([Write status JSON + raise SyncCompleted event]) --> POST_CMD{Successful port change?}
+    FINALLY([Write status JSON]) --> POST_CMD{Port written this cycle?}
     POST_CMD -- Yes --> RUN_CMD[Run post-update command fire-and-forget]
-    POST_CMD -- No --> END([Cycle done])
+    POST_CMD -- No --> END([Raise SyncCompleted event - cycle done])
     RUN_CMD --> END
 ```
 
-> During the startup grace period (see Startup Grace Period), the *Handle disconnection* and *port not found* paths - and the NAT-PMP "adapter not found" path - instead hold quietly and re-check on a fast poll, without incrementing the failure counter or applying the default port.
+> During the startup grace period (see Startup Grace Period), the *Handle disconnection* and *port not found* paths - which a NAT-PMP adapter that is not found also takes - instead hold quietly and re-check on a fast poll, without incrementing the failure counter or applying the default port.
 
 ## VPN Manager Creation
 
@@ -84,12 +87,17 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout, classifying the four non-numeric states (see below) |
 | NAT-PMP    | `NatPmpManager`    | Sends a port mapping request (RFC 6886) to the gateway, for UDP then TCP |
+| Static port | `StaticPortManager` | Returns the port entered in Settings (`staticPort`); connection state is whether the chosen adapter (`vpnAdapterName`) is up |
 
 `Disabled` is the default for new installations.
 
 > **PIA port-forward states:** `piactl get portforward` returns either a port number or one of four words, and the difference between them decides whether auto-recovery may run. `Inactive` (PIA disconnected, or port forwarding switched off in its settings) and `Unavailable` (the connected region does not offer it) describe conditions no restart can change, so `PiaVpnManager` reports them through `IVpnManager.PortForwardingUnavailable` and the cycle takes the no-recovery path described under VPN Disconnection Handling. `Attempting` (still connecting and assigning) and `Failed` (PIA tried to assign a port and did not succeed) stay ordinary failed cycles and still count toward the recovery threshold, since reconnecting is a plausible remedy for both. Output that parses as none of these is not classified either way and is likewise treated as an ordinary failure. The flag is rewritten on every port read, including the exception path, so it can never outlive the evidence for it. `PortForwardingUnavailable` is a default interface member returning `false`: ProtonVPN's log carries a port or it does not, and a NAT-PMP gateway that refuses one mapping may grant the next, so neither can make this distinction.
 
-> **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the newer Proton Protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (bidirectional substring) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
+> **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the newer Proton Protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (the adapter name contains it, or it starts with the adapter name) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
+
+### Static Port Manager Creation
+
+`CreateStaticPortVpnManager` builds a `StaticPortManager` from the saved adapter and port, and refuses to when either is unset (no adapter, or a port outside the usable range). That case is reported as a failed cycle through `SetSyncResult` with a transition-only log line, and it deliberately returns before the cycle's no-port branch: that branch counts toward auto-recovery, and no restart can supply a setting the user has not entered. Otherwise the manager is built every cycle even while the adapter is down, so the ordinary disconnected handling (startup grace, default port fallback, auto-recovery) applies unchanged. Recovery follows the NAT-PMP rule: a service restart when the adapter belongs to a known provider whose service is installed, an adapter cycle otherwise. The adapter setting `vpnAdapterName` is shared with NAT-PMP (it was `natPmpAdapterName` before 2.7.0 and is migrated, including from a settings backup).
 
 ### NAT-PMP Manager Creation
 
@@ -102,48 +110,46 @@ flowchart TD
     B -- Yes --> DISCARD[Discard cached fallback manager]
     B -- No --> C
     DISCARD --> C[TryCreateForAdapterAsync]
-    C --> D{Adapter found?}
+    C --> D{Adapter found and gateway answered?}
     D -- Yes --> COPY[Copy renewal state from previous instance]
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
-    E -- Yes --> FALLBACK([Return cached manager - will report disconnected])
-    E -- No --> GRACE{Startup grace period?}
-    GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
-    GRACE -- No --> F[Increment failed counter]
-    F --> G[TriggerRecoveryIfDueAsync]
-    G --> SKIP_STATUS([SKIP: Adapter not found])
+    E -- Yes --> FALLBACK([Return cached manager, forward address forgotten])
+    E -- No --> STANDIN([Return a stand-in that reports the adapter's real state])
 ```
 
-**Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out.
+**Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out. The same fallback is returned when the adapter is up but the gateway did not answer the probe: `IsVpnConnected()` then reports `true`, a port read that fails counts toward recovery as any failed cycle does, and the instance has forgotten its forward address, so the exit-address check treats the cycle as a failed lookup.
+
+**Why the stand-in?** With no cached manager (no gateway has answered since the app started, or the adapter setting just changed) there is no gateway to build a real `NatPmpManager` from. `MissingNatPmpAdapter` reports the adapter's real state, never a port, and carries its recovery action, so the cycle is handled as with the cached manager: an adapter that is down goes through the same disconnected handling as any later outage (the startup grace hold, the failure count and auto-recovery, and the default-port fallback), and one that is up with no gateway, or a gateway that does not answer, is a connected VPN with no port. It is never kept as the cached manager, which must carry renewal state.
 
 ## Startup Grace Period
 
-Right after the app starts, the VPN is often still connecting (VPN clients launch at login and take a few seconds to a minute to establish). When **Wait for VPN on startup** is enabled (General settings, default on), for the first `StartupGracePeriodSeconds` (90s, measured from `PortSyncService` construction) a not-yet-usable VPN is treated as expected rather than a failure. During this window, if the VPN is disconnected, is connected but has not assigned a port yet, or (NAT-PMP) its adapter is not yet discoverable, the cycle holds quietly instead of taking the normal disconnection path:
+Right after the app starts, the VPN is often still connecting (VPN clients launch at login and take a few seconds to a minute to establish). When **Wait for VPN on startup** is enabled (General settings, default on), for the first `StartupGracePeriodSeconds` (90s, measured from `PortSyncService` construction) a not-yet-usable VPN is treated as expected rather than a failure. During this window, if the VPN is disconnected, or is connected but has not assigned a port yet, the cycle holds quietly instead of taking the normal disconnection path:
 
 - The tray shows a dedicated neutral `WaitingForVpn` state (not the orange disconnected state), the outcome is logged at `Info` (not `Warn`), and the status is written as `skipped` with `waitingForVpn: true`.
 - No failure is registered, so the auto-recovery counter does not advance and no recovery runs.
 - No default-port fallback is applied.
 - The cycle re-checks quickly - it returns `min(StartupGracePollSeconds (15s), update interval)` as the next wait instead of the full interval - so the port syncs within seconds of the VPN coming up.
 
-`ShouldWaitForVpnStartup` gates all three hold points; `MarkWaitingForVpn` records the quiet outcome. The per-check log line carries a countdown (`... (startup grace period, ~45s left)`), and the same "startup grace period" wording appears in the tray tooltip and the Status panel. A successful connection within the window clears the hold silently; if the window elapses with the VPN still down (or the setting is turned off), a one-time `Startup grace period ended - resuming normal handling` line is logged and the cycle falls through to the normal disconnection handling below.
+`ShouldWaitForVpnStartup` gates both hold points; `MarkWaitingForVpn` records the quiet outcome. The per-check log line carries a countdown (`... (startup grace period, ~45s left)`), and the same "startup grace period" wording appears in the tray tooltip and the Status panel. A successful connection within the window clears the hold silently; if the window elapses with the VPN still down (or the setting is turned off), a one-time `Startup grace period ended - resuming normal handling` line is logged and the cycle falls through to the normal disconnection handling below.
 
 ## VPN Disconnection Handling
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. One case is excluded before the counter is touched at all: if the provider reported that port forwarding is *unavailable* rather than merely failing to produce a port (see **Port Forwarding Reported Unavailable** below), the cycle reports the condition and returns without registering a failure.
 
-This counter drives two behaviors:
+Two behaviors follow, only the second of them driven by the counter:
 
-1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
+1. **Default port fallback** (a disconnected VPN only, on every such cycle outside the startup grace window, whether or not auto-recovery is on) - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely. A connected VPN with no readable port gets no fallback: the cycle ends as an error.
 
-2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
-   - Resets the counter (to prevent repeated triggers)
+2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle, in this order:
    - Determines the recovery action and target based on the provider type:
-     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
-     - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
-   - Passes through the connectivity rate limiter (below)
+     - **ProtonVPN / PIA (direct, or NAT-PMP on their adapter with their service installed):** action = `restart`, target = the provider token - `AutoRecoveryManager` resolves it to the installed Windows service name and sends that to the helper, which restarts it directly
+     - **NAT-PMP with a generic gateway, and Static port:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh (Static port on a known provider's adapter restarts that provider's service, as NAT-PMP does, but only when that provider's service is installed: a WireGuard tunnel named after the provider, run without its app, is cycled instead)
+   - Passes through the connectivity rate limiter (below), and then, only when the machine is online, the consecutive-recovery cap
+   - Resets the counter (to prevent repeated triggers) - after the slot and the cap, so a held attempt leaves the streak running
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe. After a service restart the helper **verifies** the service actually reached Running (`AutoRecovery.VerifyServiceRunningAsync`) rather than reporting success on the strength of having issued the start: `StartServiceAsync` deliberately swallows a start timeout, so without the check a service that never came back would still be logged as "Restarted". A service left not-Running is logged at **Error**, which travels back over the pipe in the helper's ERROR count and raises the tray alert. That matters most with a VPN killswitch enabled, where a service that fails to restart leaves the machine with no network at all.
 
-     **Log levels around the force-kill escalation.** The helper's WARN count travels back over the same pipe as the ERROR count and also raises the tray warning badge, so what the helper logs at Warn is a user-visible signal, not just text in a file. Levels are therefore assigned by outcome, not by drama: *announcing* an escalation to a force-kill is **Info** (it is the designed fallback), a stage that *succeeds* is **Info** ("force-killed via ..."), and only a stage that *fails* is **Warn** ("Failed to ...", "could not be killed", "still running"). This is not a rare path - ProtonVPN's service does not accept an SCM stop while its tunnel is up, so a normal recovery times out after `ServiceOperationTimeoutMs` and force-kills **every time**; its own restart-on-failure policy then usually brings it back before the helper issues the start, which is why the log often reads "is already running". Logging that sequence at Warn made every successful recovery badge the tray as though something had gone wrong. The main app follows the same rule: `ProcessControl` logs only kill outcomes, and `AutoRecoveryManager` logs a successful kill at Info.
+     **Log levels around the force-kill escalation.** The helper's WARN count travels back over the same pipe as the ERROR count and also raises the tray warning badge, so what the helper logs at Warn is a user-visible signal, not just text in a file. Levels are therefore assigned by outcome, not by drama: *announcing* an escalation to a force-kill is **Info** (it is the designed fallback), a stage that *succeeds* is **Info** ("force-killed via ..."), and only a stage that *fails* is **Warn** ("Failed to ...", "could not be killed", "still running"). This is not a rare path - ProtonVPN's service does not accept an SCM stop while its tunnel is up, so a normal recovery times out after `ServiceOperationTimeoutMs` and force-kills **every time**; a service that shares its host process with others (svchost) or runs in a system process is never force-killed - the helper logs a warning and goes on to the start; its own restart-on-failure policy then usually brings it back before the helper issues the start, which is why the log often reads "is already running". Logging that sequence at Warn made every successful recovery badge the tray as though something had gone wrong. The main app follows the same rule: `ProcessControl` logs only kill outcomes, and `AutoRecoveryManager` logs a successful kill at Info.
      **Protocol version.** The helper reports which protocol version it speaks on every response (`v=1`), and a response without that key came from a helper built before versioning existed. That is what lets the app tell an *out-of-date* helper from an *unreachable* one and say "reinstall qbPortWeaver to update it" rather than leaving both looking like a generic failure. The version travels on the response rather than the request because the two halves upgrade independently and the request format is frozen at three fields: an already-installed helper parses requests with `Split('|', 3)`, so a fourth field either shifts the action out of position (the old helper then falls through to its unknown-action branch but **still writes a normal success response**, reporting a recovery that never ran) or lands inside the session token (rejected as a token mismatch). Responses are `key=value` pairs and the client skips keys it does not recognise, so response fields are append-only and safe to extend; anything the helper must be *told* needs a new action name instead, which an old helper rejects loudly rather than silently.
    - If the target matches a known provider's client process, restarts it in the user session
 
@@ -167,36 +173,36 @@ This exists because the alternative is actively harmful, not merely wasteful. Re
 
 ### Consecutive Recovery Cap
 
-`MaxConsecutiveRecoveries` (3) bounds how many auto-recoveries the **failed-cycle trigger** may dispatch without a single successful port read between them. `_consecutiveRecoveries` is incremented in `TriggerRecoveryIfDueAsync` past every other gate, at the point a recovery is actually dispatched, so attempts held by the connectivity rate limiter do not consume it. It is cleared by a successful port fetch and when auto-recovery is switched off, and deliberately **not** by `ResetFailureStreak` - the dispatch path resets that streak every time it fires, so clearing the count there would mean the cap was never reached.
+`MaxConsecutiveRecoveries` (3) bounds how many auto-recoveries the **failed-cycle trigger** may dispatch without a single successful port read between them. `_consecutiveRecoveries` is incremented in `RecoveryGate.TriggerRecoveryIfDueAsync` past every other gate, at the point a recovery is actually dispatched, so attempts held by the connectivity rate limiter do not consume it. It is cleared by a successful port fetch, when auto-recovery is switched off, and when the VPN provider or adapter changes (the run of recoveries described the old one, so the new one's first failure must not be suspended for restarts it never had), and deliberately **not** by `ResetFailureStreak` - the dispatch path resets that streak every time it fires, so clearing the count there would mean the cap was never reached.
 
-Once the cap is hit, the check returns before the sustained-failure floor and the rate limiter, logging through `LogStateChange` so the suspension is stated once rather than every cycle. The failure streak is left running rather than reset: the failures genuinely are continuing, and the count is what the per-cycle log line and the Status panel's Auto-recovery line report.
+Once the cap is hit, the check returns after the sustained-failure floor and the rate-limiter slot (the cap applies only to an online slot) and before the dispatch, logging through `LogStateChange` so the suspension is stated once rather than every cycle. The failure streak is left running rather than reset: the failures genuinely are continuing, and the count is what the per-cycle log line and the Status panel's Auto-recovery line report.
 
 The reasoning mirrors `MaxDisconnectRestarts` (see Restart-on-Disconnect Cap): a remedy that has failed three times running is not addressing the cause, and each repetition costs the user a torn-down tunnel and interrupted transfers. None of the pre-existing gates covered this. The cycle count and the sustained-failure floor both reset with the streak, so they bound how *fast* recoveries arrive but not how *many*; and the connectivity rate limiter only engages when the machine cannot reach the internet at all, which is precisely not the case when the VPN is up and merely portless. Recovery resumes on its own the moment a port reads successfully, so an intermittently failing VPN is never permanently suspended - only an unbroken run of futile recoveries is.
 
 The cap applies to the failed-cycle trigger alone. The port-closed trigger runs only after a successful port fetch, which has already cleared the count, and is one-shot in its own right; the Settings **Test** button bypasses every gate by design, and a recovery the user asked for by hand is never withheld.
 
-**The cap applies only while the machine is online**, and that exemption is load-bearing rather than a nicety. The cap is a hard stop, and the Connectivity Rate Limiter below exists precisely because a hard stop is the wrong response while the machine cannot reach the internet: a killswitch blocks the probe itself, so a stuck VPN and a dead upstream are indistinguishable, and refusing to retry leaves the killswitch up and the machine deadlocked with no way out. Offline attempts are already bounded by the 5/10/15 minute backoff and need no second bound, which is why `TryTakeRecoverySlotAsync` reports whether the slot was taken online rather than just whether it was granted.
+**The cap applies only while the machine is online**, and that exemption is load-bearing rather than a nicety. The cap is a hard stop, and the Connectivity Rate Limiter below exists precisely because a hard stop is the wrong response while the machine cannot reach the internet: a killswitch blocks the probe itself, so a stuck VPN and a dead upstream are indistinguishable, and refusing to retry leaves the killswitch up and the machine deadlocked with no way out. Offline attempts are already bounded by the 5/10/15 minute backoff and need no second bound, which is why `RecoveryGate.TryTakeRecoverySlotAsync` reports whether the slot was taken online rather than just whether it was granted.
 
 Both the **block** and the **increment** are gated on that answer, and the check therefore sits *below* the connectivity slot rather than above it. Getting this half right is a real trap and it was live for several commits: exempting only the increment, while leaving the block above the probe, still strands a machine that fails three online recoveries and then loses connectivity - no port can be read, so the cap never clears, and every later cycle returns before the probe. The cap's premise is "three attempts proved this is not the fix", which holds only where the attempts could have worked, so the fact it depends on has to be in hand before it is applied.
 
 The count is **not** cleared when offline either. A machine flapping in and out of connectivity would otherwise reset its way past the cap indefinitely, which is the unbounded restart loop the cap exists to stop.
 
-One consequence is accepted deliberately: a suspended-but-online machine now runs the connectivity probe each cycle before returning, one ping with a 2s timeout on a cycle that was going to do nothing anyway. A second probe above the cap would avoid it, at the cost of a second network round trip and a second place for the two answers to disagree.
+One consequence is accepted deliberately: a suspended-but-online machine now runs the connectivity probe each cycle before returning, one concurrent pair of pings with a 2s timeout on a cycle that was going to do nothing anyway. A second probe above the cap would avoid it, at the cost of a second network round trip and a second place for the two answers to disagree.
 
 The Status panel reports the offline hold **above** the suspension for the same reason: `recoverySuspended` is published from the counter alone, which cannot know the connectivity answer at the time the status file is written, so on an offline machine the counter can read suspended while the cap is not being applied. The same ordering is mirrored in `SampleSendMail.ps1`.
 
 ### Connectivity Rate Limiter
 
-The **failed-cycle trigger only** passes through `TryTakeRecoverySlotAsync`, which asks `InternetConnectivityProbe` whether the machine can reach the internet at all. The port-closed trigger is deliberately exempt: it only runs after a successful VPN port fetch, so that path has already proven it has connectivity, and a machine that filters ICMP would otherwise be warned its internet is down moments after a clean sync. It is also one-shot, so it cannot loop the way the failed-cycle trigger could. The probe pings `1.1.1.1` and `8.8.8.8` concurrently with a 2s timeout and reports reachable if either replies. Public resolvers are addressed by IP on purpose: name resolution is one of the things an outage breaks, so a DNS-dependent probe would report "no internet" for a DNS fault that recovery might legitimately fix.
+The **failed-cycle trigger only** passes through `RecoveryGate.TryTakeRecoverySlotAsync`, which asks `InternetConnectivityProbe` whether the machine can reach the internet at all. The port-closed trigger is deliberately exempt: it only runs after a successful VPN port fetch, so that path has already proven it has connectivity, and a machine that filters ICMP would otherwise be warned its internet is down moments after a clean sync. It is also one-shot, so it cannot loop the way the failed-cycle trigger could. The probe pings `1.1.1.1` and `8.8.8.8` concurrently with a 2s timeout and reports reachable if either replies. Public resolvers are addressed by IP on purpose: name resolution is one of the things an outage breaks, so a DNS-dependent probe would report "no internet" for a DNS fault that recovery might legitimately fix.
 
 - **Reachable:** recovery runs immediately and the backoff resets.
 - **Not reachable:** the first recovery of a streak still runs; later attempts wait 5, then 10, then 15 minutes, holding at 15 for as long as the condition lasts.
 
 The distinction between rate-limiting and blocking is load-bearing, not a nicety. A VPN killswitch blocks the probe itself while the tunnel is down, so a machine whose VPN is genuinely stuck looks identical to one whose upstream is down. Refusing to recover outright would leave the killswitch up, the probe failing, and the machine deadlocked with no way out - so recovery is slowed but never stopped. The elapsed-time comparison uses `Environment.TickCount64`, which is monotonic: a machine returning from an outage often corrects its clock by NTP, and a backward jump must not release every held attempt at once.
 
-The attempt counter is cleared from two places, and both are needed: the probe succeeding, and a successful port fetch in the sync cycle. Once the VPN is healthy recovery is never dispatched, so the probe branch alone would leave a stale count behind and delay the first attempt of a later, unrelated outage.
+The attempt counter is cleared from three places: the probe succeeding, a successful port fetch in the sync cycle, and a change of provider or adapter (`RecoveryGate.ResetForNewContext`). The first two are both needed: Once the VPN is healthy recovery is never dispatched, so the probe branch alone would leave a stale count behind and delay the first attempt of a later, unrelated outage.
 
-The gate sits **above** `ResetFailureStreak()`, so a held attempt leaves the failure streak intact. This matters for the cadence: were the streak reset on a hold, the next attempt would have to rebuild it and clear the sustained-failure floor again before the backoff even applied, making the real spacing longer than 5/10/15 by an amount depending on the configured interval. Leaving it hot means the streak stays above the trigger threshold, the probe runs once per cycle while offline (one ping, negligible), and the timing is governed by the backoff alone.
+The gate sits **above** `ResetFailureStreak()`, so a held attempt leaves the failure streak intact. This matters for the cadence: were the streak reset on a hold, the next attempt would have to rebuild it and clear the sustained-failure floor again before the backoff even applied, making the real spacing longer than 5/10/15 by an amount depending on the configured interval. Leaving it hot means the streak stays above the trigger threshold, the probe runs once per cycle while offline (one concurrent pair of pings, negligible), and the timing is governed by the backoff alone.
 
 ### Usable Port Rule
 
@@ -237,13 +243,15 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter resets in two cases (the streak start time is simply re-stamped when the next streak begins):
+The counter resets in these cases (the streak start time is simply re-stamped when the next streak begins):
 - **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
 - **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
+- **No recovery target**: the threshold is reached but the provider has no recovery target; the counter resets with a Warn (`No recovery target found for '<provider>' - skipping recovery`), so the warning does not repeat every cycle.
+- **A different VPN provider or adapter** (`TrackRecoveryContext`, which a switch to Disabled also is), and every cycle while port sync is set to Disabled: `RecoveryGate.ResetForNewContext` also clears the offline backoff, since the failures no longer describe the same setup, and a streak whose start lies far in the past would otherwise clear the sustained-failure floor on the new setup's first failure.
 
-The separate consecutive-recovery count (see Consecutive Recovery Cap) follows different rules: it is cleared only by a successful port detection or by auto-recovery being switched off, never by a streak reset, since every dispatch resets the streak by design.
+The separate consecutive-recovery count (see Consecutive Recovery Cap) follows different rules: it is cleared only by a successful port detection, by auto-recovery being switched off, or by a change of provider or adapter (including a switch to Disabled), never by a streak reset, since every dispatch resets the streak by design.
 
-All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the sustained-failure floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
+All resets flow through a single `ResetFailureStreak` helper. It zeroes the counter and clears the sustained-failure floor's deadline; the floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
 
 ### Manual Recovery Test
 
@@ -253,7 +261,7 @@ The Settings form's **Test** button (Auto-recovery header row) dispatches the sa
 
 All client communication goes through the `IManagedClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
 
-> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0 Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1`. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
+> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0-or-later Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1` by default. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
 
 ### Port Update Sequence
 
@@ -270,25 +278,25 @@ All client communication goes through the `IManagedClient` interface, with imple
    core.set_config                                                        [Deluge]
    POST /v1/port                                                          [Nicotine+]
 
-3. Record the change in the port history file (always on success - see Port History under
-   Status Output), and (optional) show a tray balloon tip if NotifyOnPortUpdate is enabled
-   (raises PortUpdated event)
-4. (optional) Restart client process or service (if restart enabled)
+3. (optional) Restart client process or service (if restart enabled)
+4. Record the change in the port history file (whenever the port was written, even if the restart
+   failed - see Port History under Status Output), and (optional) show a tray balloon tip if
+   NotifyOnPortUpdate is enabled (raises PortUpdated event)
 5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
-              Skipped if step 4 already restarted (avoids redundant restart)
+              Skipped if step 3 already restarted (avoids redundant restart)
 6. (optional) Verify outside reachability of the port (see Port Verification below):
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
    port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]
    core.test_listen_port         → true/false                                [Deluge]
-   POST /v1/porttest             → open/closed/pending                       [Nicotine+]
+   POST /v1/porttest             → open/closed, pending or offline           [Nicotine+]
 ```
 
-> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
+> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only when the port changed this cycle (including when the client restart after the write failed, which the status file reports) - so a script that reads the status file sees this cycle's result rather than the previous one.
 
 ### Interface Mismatch Warning *(qBittorrent and Nicotine+)*
 
-When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the VPN adapter: an exact, case-insensitive match on the chosen adapter for NAT-PMP and Static port (it is picked from the live Windows list, so it is already the name the client reports), and, for ProtonVPN and PIA, a case-insensitive match on the registry-configured adapter names: the bound name contains a configured name, or a configured name starts with it, so a short unrelated adapter such as "VPN" does not pass for "ProtonVPN". A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 > If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
 
@@ -319,7 +327,7 @@ default on):
 
 | setting | behaviour |
 |---------|-----------|
-| off | Warn plus a one-shot balloon, naming the stale binding and how to clear it |
+| off | Warn plus a one-shot balloon, naming the stale binding and how to clear it, when the interface-mismatch warning is on (Debug only otherwise) |
 | on  | `POST /api/v2/app/setPreferences` re-applies the resolved token **and** the name together, as the Web UI does when an adapter is picked |
 
 The repair never writes an empty token: empty means *bind to every interface*, which would replace a
@@ -354,11 +362,14 @@ repaired in this same cycle. `CheckAndRepairInterfaceBindingAsync` returns that 
 call site is an `&&`, because a correct token is a *precondition* of reading the address rather than
 a description of the usual case. Measured, on qBittorrent 5.2.3:
 `GET /api/v2/app/networkInterfaceAddressList?iface=<stale token>` answers **HTTP 200 with an empty
-array**, not an error - so `live` comes back as `[]` rather than `null`, the "unknown rather than
-healthy" guard below never fires, and the adapter reads as having lost every address it has. Ungated,
-that produced a `Warn` or an `Info` stating something false, armed the port-closed escalation on
-nothing, and left `_lastKnownInterfaceAddresses` empty so the next readable cycle reported a second
-phantom change back. `DiagnosticsService.AddInterfaceResultAsync` returns after a stale token for the
+array**, not an error. Taken at face value the adapter would read as having lost every address it has,
+so `QBittorrentClient.GetInterfaceAddressStateAsync` maps an empty list to `null` (a stale token, or one
+naming an adapter that is not there): it reads as unknown, and the "unknown rather than healthy" guard
+below applies. The `&&` gate is the second guard, repairing a stale token before the address is read at
+all. Ungated and unmapped, it produced a `Warn` or an `Info` stating something false, armed the
+port-closed escalation on nothing, and left `_lastKnownInterfaceAddresses` empty so the next readable
+cycle reported a second phantom change back. The mapping has an accepted cost: an adapter that is up
+but has no address yet answers with an empty list too, and reads as unknown for those few seconds. `DiagnosticsService.AddInterfaceResultAsync` returns after a stale token for the
 same reason; the sync loop had claimed the precondition in a comment without enforcing it.
 
 | condition | response |
@@ -375,7 +386,7 @@ transport failure at `Error`, which would raise the tray error badge inside a br
 calls an ordinary reconnect. Here the status only decorates the line, the `"no status"` fallback
 already treats an unreadable one as expected, and a failure logs at `Debug`.
 
-An unreadable list (older qBittorrent, unreachable API, nothing bound) is treated as *unknown*, not
+An unreadable list (older qBittorrent, unreachable API, nothing bound, a token that resolves to no adapter) is treated as *unknown*, not
 healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
 last real observation and a change spanning the gap is still reported.
 
@@ -423,7 +434,9 @@ move is to wait for the next cycle rather than write something about to be wrong
 
 **The escalation.** For the ambiguous case, `TryRebindClientAddressAsync` runs inside
 `MaybeTriggerPortClosedRecoveryAsync`, ahead of the VPN restart dispatch, and only when the port is
-confirmed closed *and* the adapter changed address. That ordering is the point: restarting the VPN
+confirmed closed, the adapter changed address, the client is qBittorrent and **Fix interface binding**
+is on. Port verification and port-closed recovery must be on as well, since this runs inside that
+trigger (`SyncConfig.RebindReachable` names the whole set). That ordering is the point: restarting the VPN
 cannot move a listener stranded on the old address, and costs the user the tunnel to discover it. The
 rebind is tried first, the trigger deliberately stays **armed**, and the confirmed-closed count resets
 so the next escalation needs fresh evidence - if the rebind did not help, that round restarts the VPN
@@ -518,26 +531,30 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 |---|---|---|
 | qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
 | Transmission | `port_test` RPC (`ip_protocol=ipv4`) | Active probe via Transmission's online port-check service. Uses the Transmission 4.1 method name, pinned to IPv4; falls back to the legacy `port-test` method on pre-4.1 daemons |
-| Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
-| Nicotine+ | `POST /v1/porttest` via the bridge plugin | The plugin uses Nicotine+'s native checker when the version exposes it (the `check-port-status` API, upstream #3373, not yet in a stable release); otherwise it falls back to querying the Soulseek port-test service (`slsknet.org/porttest.php`) over HTTP and parsing the `<port>/tcp open\|closed` verdict. Either way the plugin caps the wait below qbPortWeaver's HTTP timeout, so a slow or offline check returns `pending` and is treated as undetermined rather than closed |
+| Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service. The service sits behind a bot filter that can answer the daemon's request with a challenge page instead of a result, in which case Deluge returns null and the check reads undetermined (as Deluge's own Test Active Port shows a warning triangle). qbPortWeaver does not query the service itself, since it filters automated clients on purpose |
+| Nicotine+ | `POST /v1/porttest` via the bridge plugin | The plugin uses Nicotine+'s native checker when the version exposes it (the `check-port-status` API, upstream #3373, not yet in a stable release); otherwise it falls back to querying the Soulseek port-test service (`slsknet.org/porttest.php`) over HTTP and parsing the `<port>/tcp open\|closed` verdict. Either way the plugin caps the wait below qbPortWeaver's HTTP timeout, so a slow or unreachable check service returns `pending` and is treated as undetermined rather than closed. While the user has disconnected Nicotine+ from the server, or it has not connected since the plugin started, the plugin runs no check and returns `offline`, also undetermined, since nothing listens on the port; while it reconnects on its own the check runs as usual |
 
-**Throttle** - because three of the four mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
+**Throttle** - because three of the four mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger), every cycle while an exit-address mismatch is held with port-closed recovery on and no give-up yet (not behind another NAT, where none are made), so each reconnect's session is looked at, and for up to two reconnect spacings after a reconnect while its episode is still open with no mismatch held, so the final connection after an intermediate match is looked at too. Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised at the threshold so the first eligible cycle after startup checks immediately.
 
-**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged - except while a closed result is awaiting confirmation, where three consecutive undetermined checks drop the pending state, log an Info line, and resume the normal throttle. Only the pending state forces a check every cycle, so only it needs bounding: without that cap an outage of the check service would be polled at full rate, by every install at once, for as long as it lasted. A later definite closed result simply starts the confirmation sequence again.
+**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed, and only when it comes at least half a sync interval after the first: the quick re-check about 10 seconds after a network change or Sync Now stays pending, since two closed readings that close together are usually one reconnect still settling. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon (unless an exit-address mismatch is held, which has raised its own - see below). Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged, though they still run the VPN exit address check below - except while a closed result is awaiting confirmation, where three consecutive undetermined checks drop the pending state, log an Info line, and resume the normal throttle. Only the pending state forces a check every cycle, so only it needs bounding: without that cap an outage of the check service would be polled at full rate, by every install at once, for as long as it lasted. A later definite closed result simply starts the confirmation sequence again.
 
-**Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
+**Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no installed ProtonVPN or PIA, as resolved under VPN Disconnection Handling). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again (or the VPN provider or adapter changes, since that recovery was for the old setup's outage), so a persistently false closed reading causes at most one recovery action and never a recovery loop. The trigger counts time as well as checks: it fires only once the outage has been confirmed closed for (trigger - 1) sync intervals, the time the checks take on the normal schedule. After a reconnect the closed checks arrive in a burst (the cycle after a network change runs at once, and a quick re-check follows about 10 seconds later), so the count alone could reach the trigger within a minute while the client is still firewalled from the reconnect; until the floor has passed, the closed-port Warn reads `recovery waits until the port has stayed closed for N sync intervals`. The floor starts again whenever the closed-port sequence does (`RestartClosedPortSequence`, when an exit-address hold ends, the provider or adapter changes, the VPN is found disconnected, or it is connected but no port can be read, since such a cycle verifies nothing and the first check after it is usually the client still reconnecting; a port known closed before is then re-tested on the first cycle with a port rather than after the throttle), because measured from the outage's first confirmation it would already have passed and give no cover to the burst that follows the reconnect. It also waits while an exit-address reconnect is less than `MinVpnExitReconnectSpacing` old, so the session that reconnect produced is not restarted before it has settled; the Warn then reads `recovery waits for the last exit-address reconnect to settle`, and once neither hold applies, `recovery is due now`. While either hold keeps a count that has reached the trigger back, `portClosedRecoveryHeldUntil` carries the instant it ends, and the Status panel reads `Holding - too soon to restart, retry in ~N` instead of a count past its target. An exit-address mismatch is handled separately, with at most `MaxVpnExitReconnects` (3) reconnects per mismatch (see VPN exit address check below).
+
+**VPN exit address check** *(NAT-PMP and ProtonVPN)* - peers learn a client's address from what other hosts observe (the Soulseek server, other peers), so they are always given the address the machine's traffic leaves from. Some VPN servers forward the port on one address and send traffic out on another (seen on ProtonVPN P2P servers over OpenVPN: forward on the server's listed address, traffic out on a different address of the same server, which can change between sessions; in testing 5 of 6 OpenVPN sessions across three servers left from another address, while all 5 Proton WireGuard sessions on the same servers left from the forward address, so the README recommends that protocol). The forward then exists but is unreachable for every client, and no client setting can change that - the Soulseek protocol, for one, has no field to announce an address. `IVpnManager.GetForwardAddressAsync` gives the address the port is forwarded on; `NatPmpManager` takes it from the gateway's external-address reply at creation (`ForwardAddress`), and `ProtonVpnManager` asks its tunnel gateway the same way (`NatPmpManager.QueryExternalAddressAsync`, two attempts), since ProtonVPN forwards the port through NAT-PMP on that gateway. Read lazily, once per cycle, only when the check needs it. The fallback, for a gateway that does not answer, is the newest `connected to server with IPv4 'x'` line in the ProtonVPN client log (ProtonVPN writes it more than once per connection, sometimes first with another address of the same server, and the newest one matched NAT-PMP in testing; the rotated `client-logs.1.txt` is read when the current log lacks it). That line alone was not enough: it is written once per connection, while the port status line every 10 seconds rotates both log files within hours, so the check stopped running a few hours into a connection. Only when the gateway is silent and neither log has the line does the check not run. PIA and Static port report none and skip the check. The STUN request is sent from `IVpnManager.TunnelAddress`, the adapter's live IPv4 address, and messages name the source through `ForwardSource` (`The NAT-PMP gateway on '<adapter>'`, or `ProtonVPN server CA#104`). At each *confirming* closed result (not the first one, which right after a port change is usually the client still reconnecting) and at any closed result while a mismatch is held, `CheckVpnExitAddressAsync` reads the adapter's current IPv4 address and sends one STUN Binding request, retried once if unanswered (RFC 5389, `stun.cloudflare.com:3478`) from it, so it goes through the tunnel even when the VPN is not the default route; the reply's XOR-MAPPED-ADDRESS is the exit address. It also runs at each verification whose result could not be determined (`CheckVpnExitAddressForUndeterminedAsync`): a client whose own test never answers - Deluge's check service filters automated requests - would otherwise never reach it, and a mismatch needs no confirmation from the client, since peers are given the exit address whatever its test would have said. Such a mismatch gets the same Warn, one balloon when it starts, and the same reconnects; a match or a failed lookup leaves the result undetermined. It is looked up afresh every time, never cached, because a reconnect can keep both the forward and the adapter address while the exit address changes. It fails open: no answer means no evidence, so nothing changes.
+
+When the two differ, a state-change Warn, latched on its full text so that a reconnect changing the port or the exit address logs a new one, names both (`The NAT-PMP gateway on '<adapter>' forwards port N on X, but traffic leaves from Y. Peers are given Y, so they cannot reach the forwarded port - reconnecting may give a different exit address, or connect to a different server`, or on ProtonVPN's OpenVPN adapter `- ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server`), the balloon - raised once, by `CheckVpnExitAddressAsync` at the moment it enters the mismatch, whichever path found it, while the confirmed-closed transition balloon stands aside for as long as a mismatch is held - carries a short form of it (`VpnExitAddress.DescribeMismatchShort`: `Port N cannot be reached: traffic leaves the VPN from Y, not X where it is forwarded.` then the advice), because Windows keeps at most 255 characters of a balloon's text, and the normal count-and-restart path is held in favour of a targeted one. Testing showed the exit address can change between connections (the same ProtonVPN server over OpenVPN gave .42, .41 and .45 across sessions while forwarding on .42, with or without VPN Accelerator, though two sessions that got the same tunnel address both left from .45), so a reconnect may fix it: when port-closed recovery is enabled, `ReconnectForExitAddressAsync` dispatches the provider's normal recovery action at each confirming check that still finds a mismatch, up to `MaxVpnExitReconnects` (3) per mismatch, without spending the one-shot port-closed arm. Reconnects (and the give-up after the last one) are spaced at least `MinVpnExitReconnectSpacing` (2 minutes) apart, and from any other recovery dispatch too (the failed-cycle or port-closed trigger restarts the service just the same): a recovery makes the next cycle start at once and ProtonVPN goes through 2-3 connections of its own (about 40 seconds when measured), so without the spacing the next lookup could judge a connection about to be replaced. Lookups still run meanwhile, but a match inside that window, or within 2 minutes of any other recovery dispatch (`ExitEpisodeSettling`), ends only the hold, not the episode: a passing match on one of the provider's own intermediate connections would otherwise refund the reconnects and, when the final connection differs again, announce the same mismatch a second time. The first match after the window ends the episode, and for the same reason an open result inside the window makes no refunding lookup. The window is measured from when the recovery returns as well as when it is dispatched, since the helper can take most of two minutes over a slow restart. Verification runs every cycle until the give-up (keyed on the give-up rather than the count, so the last reconnect's session is still looked at), since a reconnect does not always bring a new port to force a check, and also, for up to two reconnect spacings after a reconnect, while its episode is open with no mismatch held, so the final connection after an intermediate match is still looked at; an open result in that window logs `reachable from outside again` once for the announcement, however many checks follow. After the last one it logs a single Warn and raises the balloon (`The exit address still does not match the forwarded one after 3 reconnect attempts - connect the VPN to a different server`, worded as attempts because a reconnect is counted when dispatched, and one the helper could not carry out has logged its own Warn), and the hold stays, so a server that rarely lands on the forward address cannot loop; it stays too when the same provider stops reporting its forward address afterwards (a silent ProtonVPN gateway with its log line rotated away), or a lookup after the give-up cannot complete while the forward address is still the one the give-up was for, since no new connection has been made; the status file then keeps the last known pair. A match logs `Traffic now leaves from X, the address the port is forwarded on - matched after N reconnects`. A match at a closed check that took reconnects also disarms the one-shot port-closed trigger, whether or not the last reconnect is still settling, counting them as this outage's recovery: otherwise the client's post-reconnect closed readings (qBittorrent stays firewalled for minutes) would reach the trigger and restart the VPN, discarding the matched session. It re-arms on the next open result. The reconnect count and the give-up reset only when a lookup finds the addresses equal (or on a change of provider or adapter, a switch to a provider that reports no forward address, or verification switched off), not on an open result alone, a failed lookup, or the same provider failing to read its forward address for a while (ProtonVPN when its gateway does not answer and both its current and rotated logs have lost the connection line, which ends the hold like a failed lookup but keeps the episode), so neither a client test that flips to open in between nor a flaky lookup can add up to more than the limit. Since an open result is how a working fix normally shows up, and no lookup runs on one, an open result after an exit reconnect or a give-up, once the last recovery has settled, makes one direct lookup (`ResetSpentExitReconnectsIfMatchedAsync`, which never announces anything); equal addresses reset the count and log `Traffic now leaves from X, the address the port is forwarded on - the exit-address reconnect count starts again`. The one exception is a mismatch, after a give-up, on a different forward address than the give-up was for: that is a new server (usually the one the user was told to move to), so it starts its own episode with its own reconnects and balloon. It cannot loop, because after a give-up the app reconnects no more, so the forward can only have changed from outside. With port-closed recovery off, only the messages appear. While held, the closed checks the mismatch explains are not counted (the count is reset when the hold starts), and once the reconnects are spent verification falls back to the every-5th throttle as it does when disarmed - otherwise the count would sit past the trigger and fire on the first closed check after the user reconnects to a good server, which is usually the client still reconnecting. The hold ends when a lookup finds the addresses equal (Info line), when the lookup cannot be completed, or when the port verifies open. A lookup that cannot be completed ends only the hold, not the episode: the mismatch stays announced and its Warn latched, so the same mismatch found again (typically after a reconnect, before the adapter has its address) is not reported a second time. A hold that ends at a closed check restarts the closed-port sequence from the beginning: that result counts as a first, unconfirmed one, because the confirmed state survives a port change by design and the first check after a reconnect to a good server is usually the client still reconnecting. When the hold ends, both addresses are cleared from the status file once the port verifies open or a switch to a provider that reports no forward address; when the same provider fails to read its forward address, only the exit address is cleared and the forward address stays. A forward address in a private or carrier-grade NAT range (RFC 1918, RFC 6598, or link-local) means the gateway is the user's own router behind a second NAT, and the message says that instead of suggesting another server. No reconnects are made in that case, since none can change the address (for an adapter no provider owns, the recovery action would cycle the machine's own network adapter), the hold stays, the closed-port Warn says `the gateway is itself behind another NAT, so the port cannot be reached from the Internet - recovery is held`, and the Auto-recovery row reads `Held - the gateway is behind another NAT`. The Status panel's Auto-recovery row reads "Held - …" and the Reachable row's tooltip explains the cause; Diagnostics has a **VPN exit address** row.
 
 **On-demand test** - the Status panel's **Test Port** button runs this same reachability check immediately via `PortSyncService.TestActivePortAsync`, against a fresh client outside the cycle. It bypasses the throttle and the confirmation rule (a single result is reported as open/closed/undetermined) and does not affect the recovery counter or arming state, so it is purely diagnostic.
 
 ### Port Update Notification
 
-When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
+When `NotifyOnPortUpdate` is enabled (General settings, default on), a port change raises the `PortUpdated` event once `ApplyPortUpdateAsync` returns, also when the client restart after the write failed. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
 
 ### Log Alert Notifications
 
 `LogManager` raises a `WarnOrErrorLogged` event (outside the write lock) whenever a `Warn` or `Error` entry is written. `MainForm` subscribes and marshals to the UI thread to:
 
-- Show a `ToolTipIcon.Warning` balloon tip once per unseen session. Clicking the balloon opens the log viewer scrolled to the most recent warning or error.
+- Show a `ToolTipIcon.Warning` balloon tip once per unseen session. Clicking the balloon opens the log viewer scrolled to the most recent warning or error. The specific warning balloons (interface mismatch, port verification failure, client settings conflict) open it the same way; the log-write-failure balloon does not, since it has nothing in the log to show.
 - Update the **Show Logs** context menu item text with a running count (e.g. "Show Logs (2 warnings, 1 error)").
 - Append a human-readable count to the tray tooltip (e.g. "2 Warnings, 1 Error").
 
@@ -558,7 +575,7 @@ The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip
 
 When opened, `UpdateAvailableForm` offers an in-app **Download & Install**: it downloads the release's MSI asset (`UpdateChecker.DownloadFileAsync`, with a progress bar), launches it interactively, and exits so the installer can replace the files and relaunch the updated app. It falls back to opening the release page when the release has no MSI asset or a download/launch fails. The **About** dialog's Update button routes into this same dialog (`AboutForm.UpdateRequested`).
 
-**The download is checksum-verified before it is launched.** The GitHub releases API reports a `digest` (`sha256:<hex>`) per asset, which `TryGetMsiAsset` reads from the same asset object as the URL - so the hash and the bytes it applies to cannot come from different responses - and carries on `LatestReleaseInfo.MsiSha256`. `DownloadFileAsync` hashes the stream as it writes, so a 69 MB installer costs no second pass, and throws `InvalidDataException` on a mismatch; the existing catch deletes the partial file, so nothing unverified is left under a name that looks finished. `UpdateAvailableForm` handles that case separately from a failed transfer: **Error** rather than Warn, and "failed its integrity check" rather than "download failed", because a completed transfer with wrong bytes is a different signal from a stalled connection.
+**The download is checksum-verified before it is launched.** The GitHub releases API reports a `digest` (`sha256:<hex>`) per asset, which `TryGetMsiAsset` reads from the same asset object as the URL - so the hash and the bytes it applies to cannot come from different responses - and carries on `LatestReleaseInfo.MsiSha256`. `DownloadFileAsync` hashes the stream as it writes, so a 69 MB installer costs no second pass, and throws `InvalidDataException` on a mismatch; the existing catch deletes the partial file, so nothing unverified is left under a name that looks finished. `UpdateAvailableForm` handles that case separately from a failed transfer: **Error** rather than Warn, and "Integrity check failed" rather than "download failed", because a completed transfer with wrong bytes is a different signal from a stalled connection.
 
 `InvalidDataException` derives from `SystemException`, **not** `IOException`, so a caller filtering on the two transfer exception types alone would let a checksum failure escape - catch it explicitly. A missing or malformed digest means *unverified, proceed*, on the same rule a helper response with no `v=` key means an older peer rather than a failure: the field is a recent GitHub addition and refusing to update without it would break the path it exists to protect. This is a check on the download, not a guarantee to the user - the MSI is unsigned, so the UAC prompt shows an unknown publisher either way.
 
@@ -592,26 +609,31 @@ that are dropped rather than written.
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate, read from `nextSyncAt` and displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked". An **Auto-recovery** line reports what auto-recovery is doing, from ten keys the cycle writes. Six describe the failed-cycle trigger - `recoveryEnabled`, `recoveryFailedCycles`, `recoveryTriggerCycles`, `recoveryHoldUntil`, `recoverySustainedUntil` and `recoverySuspended` - and four describe the port-closed trigger: `portClosedRecoveryEnabled`, `portClosedRecoveryChecks`, `portClosedRecoveryTriggerChecks` and `portClosedRecoveryArmed`. `portClosedRecoveryEnabled` is the *effective* value rather than the stored setting: the port-closed trigger runs inside port verification, so it is published as false whenever verification is off, however its own checkbox was left (Settings greys that checkbox out but never clears it). Without that, turning verification off and the failed-cycle trigger off left the row reading "Idle" for a trigger that could never fire. The line reports these states:
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate, read from `nextSyncAt` and displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked". An **Auto-recovery** line reports what auto-recovery is doing, from keys the cycle writes. The failed-cycle trigger is described by `recoveryEnabled`, `recoveryFailedCycles`, `recoveryTriggerCycles`, `recoveryHoldUntil`, `recoverySustainedUntil` and `recoverySuspended`, the port-closed trigger by `portClosedRecoveryEnabled`, `portClosedRecoveryChecks`, `portClosedRecoveryTriggerChecks`, `portClosedRecoveryArmed` and `portClosedRecoveryHeldUntil` - and the exit-address keys describe what that trigger does about a mismatch: `vpnExitAddressMismatch`, `vpnForwardAddress`, `vpnExitAddress`, `vpnExitReconnects`, `vpnExitReconnectsMax`, `vpnExitReconnectGaveUp` and `vpnProtonOverOpenVpn`. `portClosedRecoveryEnabled` is the *effective* value rather than the stored setting: the port-closed trigger runs inside port verification, so it is published as false whenever verification is off, however its own checkbox was left (Settings greys that checkbox out but never clears it). Without that, turning verification off and the failed-cycle trigger off left the row reading "Idle" for a trigger that could never fire. The line reports these states:
 
 | The line reads | When |
 |---|---|
-| `Disabled` | Both triggers are off. Either one can restart the VPN with the other switched off, so one being off is not enough. |
 | `-` | No cycle has published a threshold yet: a status file from a version before these keys, or a cycle that failed before reading config. |
-| `Suspended - restarts did not restore the port, resumes when one is found` | The consecutive-recovery cap has been reached. Outranks the sustained-failure `Holding` row: that one defers the next attempt, this one means none is coming until a port reads successfully. The offline `Holding` row sits above it, because the cap is not applied while the machine is offline (see Consecutive Recovery Cap). |
+| `Disabled` | Both triggers are off, or port sync is set to Disabled. Either trigger can restart the VPN with the other switched off, so one being off is not enough. |
 | `Holding - cannot confirm internet, retry in ~12m` | The offline rate limiter is waiting. "Cannot confirm" rather than "no internet": the probe only knows nothing answered its pings, and a network filtering ICMP looks identical. |
+| `Suspended - restarts did not help, resumes when a port is found` | The consecutive-recovery cap has been reached. Outranks the sustained-failure `Holding` row: that one defers the next attempt, this one means none is coming until a port reads successfully. The offline `Holding` row sits above it, because the cap is not applied while the machine is offline (see Consecutive Recovery Cap). |
 | `Holding - failures too recent, retry in ~48s` | The sustained-failure floor is waiting. It clears by itself within a cycle or two. |
 | `3 of 5 failed cycles` | A failure streak is building toward the trigger. |
 | `Will trigger on the next failed cycle` | The streak has passed the threshold with nothing holding it. |
+| `Held - the gateway is behind another NAT` | An exit-address mismatch on a private or carrier-grade NAT forward address. No reconnect is made, since none can change it. |
+| `Reconnecting for a matching exit address (1 of 3)` | An exit-address mismatch is held and there has been no give-up yet (the row can read 3 of 3 while the last reconnect's session is looked at). Outranks the closed-check count, which is not advancing while it holds. |
+| `Held - no matching exit address after 3 attempts` | The reconnects are spent. The exit-address rows are kept short to fit the value label: the row's tooltip, and the Reachable row's, add both addresses and advice that follows the state (no reconnect suggestion after the give-up; on ProtonVPN's OpenVPN tunnel, `vpnProtonOverOpenVpn`, switch to Proton WireGuard (UDP) first). |
+| `Triggered - waiting for the next scheduled check` | The one-shot port-closed trigger has fired and disarmed, or a match after exit-address reconnects disarmed it, counting them as this outage's recovery. Outranks the hold and the count below, which can still be reported while it is disarmed. |
+| `Holding - too soon to restart, retry in ~2m` | The closed-check count has reached the port-closed trigger, but the time floor or an exit-address reconnect's settle window holds it back (`portClosedRecoveryHeldUntil`). Worded for both holds; the closed-port Warn names which one. |
+| `Will trigger on the next closed check` | That hold has run out, so the next confirmed closed check fires the trigger. |
 | `2 of 3 closed checks` | Confirmed-closed checks are accumulating toward the port-closed trigger. |
-| `Triggered - waiting for the next scheduled check` | The one-shot port-closed trigger has fired and disarmed. |
 | `Idle` | Nothing else applies. |
 
-The failed-cycle states take precedence, and the line falls through to the port-closed ones when that trigger has nothing to report. `Will trigger on the next failed cycle` is a single phrase shared by all three sites that can report it, whether a hold expired or the streak passed the threshold. `Triggered - waiting for the next scheduled check` is worded that way because only the cycle's own verification re-arms the trigger; the Test Port button is read-only and does not.
+The failed-cycle states take precedence, and the line falls through to the port-closed ones when that trigger has nothing to report. `Will trigger on the next failed cycle` is a single phrase shared by all three sites that can report it, whether a hold expired or the streak passed the threshold. `Triggered - waiting for the next scheduled check` is worded that way because, of the checks, only the cycle's own verification re-arms the trigger (a VPN provider or adapter switch also does); the Test Port button is read-only and does not.
 
-All three gates in `TriggerRecoveryIfDueAsync` report themselves, each naming its own cause, because they mean different things to a user - the two `Holding` rows above and the `Suspended` row. The rule each time has been the same: a gate that silently stops recovery leaves the panel showing `6 of 3 failed cycles` and no explanation, with the reason living only in the log. `recoverySustainedUntil` was added to close that gap for the sustained-failure floor, and `recoverySuspended` closes it for the cap. The two countdowns are formatted through the panel's shared `FormatDuration` and carry the same `~` prefix as the Next sync countdown, so every relative time on the panel reads alike; `recoverySuspended` has no countdown because that gate has no deadline - it clears on a successful port read, so there is nothing to count down to.
+All three gates in `RecoveryGate.TriggerRecoveryIfDueAsync` report themselves, each naming its own cause, because they mean different things to a user - the two failed-cycle `Holding` rows above and the `Suspended` row. The rule each time has been the same: a gate that silently stops recovery leaves the panel showing `6 of 3 failed cycles` and no explanation, with the reason living only in the log. `recoverySustainedUntil` was added to close that gap for the sustained-failure floor, and `recoverySuspended` closes it for the cap. `portClosedRecoveryHeldUntil` does the same for the port-closed trigger's holds, which would otherwise show `4 of 3 closed checks`. The two countdowns are formatted through the panel's shared `FormatDuration` and carry the same `~` prefix as the Next sync countdown, so every relative time on the panel reads alike; `recoverySuspended` has no countdown because that gate has no deadline - it clears on a successful port read, so there is nothing to count down to.
 
-`recoveryHoldUntil` and `recoverySustainedUntil` are absolute instants, not remaining durations, because it is computed at the end of the cycle while `timestamp` is stamped at the start - reading a duration against the wrong origin would make the countdown run out early by however long the cycle took. `recoveryFailedCycles` is likewise read in the cycle's `finally`, since the failure paths inside `RunCoreAsync` are what increment it, as are `portClosedRecoveryChecks` and `portClosedRecoveryArmed`, which the verification path mutates mid-cycle. `portClosedRecoveryArmed` is `false` from the moment the one-shot trigger fires until a verification reports the port open again; while it is `false` that trigger cannot fire however long the port stays closed, which is why both the panel and the per-cycle port-closed warning say so explicitly rather than falling silent. The one-second repaint refreshes this line for the same reason it refreshes Next sync: the countdown drifts with the wall clock, and would otherwise sit frozen for a whole cycle.
+`recoveryHoldUntil`, `recoverySustainedUntil` and `portClosedRecoveryHeldUntil` are absolute instants, not remaining durations, because it is computed at the end of the cycle while `timestamp` is stamped at the start - reading a duration against the wrong origin would make the countdown run out early by however long the cycle took. `recoveryFailedCycles` is likewise read in the cycle's `finally`, since the failure paths inside `RunCoreAsync` are what increment it, as are `portClosedRecoveryChecks` and `portClosedRecoveryArmed`, which the verification path mutates mid-cycle. `portClosedRecoveryArmed` is `false` from the moment the one-shot trigger fires until a verification reports the port open again or the VPN provider or adapter changes; while it is `false` that trigger cannot fire however long the port stays closed, which is why both the panel and the per-cycle port-closed warning say so explicitly rather than falling silent. The one-second repaint refreshes this line for the same reason it refreshes Next sync: the countdown drifts with the wall clock, and would otherwise sit frozen for a whole cycle.
 
 The hold was originally appended to the **VPN status** line instead. That hid it in the case it most needed to explain: `vpnConnected` is set before the port fetch, so an upstream outage with the tunnel still up renders a green "Connected" and suppressed the hold entirely. A labelled row is also reachable during the ordinary failure - a streak building toward the threshold - which the VPN status line has no way to show.
 
@@ -641,15 +663,25 @@ The hold was originally appended to the **VPN status** line instead. That hid it
   "portClosedRecoveryEnabled": true,
   "portClosedRecoveryChecks": 0,
   "portClosedRecoveryTriggerChecks": 3,
-  "portClosedRecoveryArmed": true
+  "portClosedRecoveryArmed": true,
+  "portClosedRecoveryHeldUntil": null,
+  "vpnForwardAddress": null,
+  "vpnExitAddress": null,
+  "vpnExitAddressMismatch": false,
+  "vpnExitReconnects": 0,
+  "vpnExitReconnectsMax": 3,
+  "vpnExitReconnectGaveUp": false,
+  "vpnProtonOverOpenVpn": false
 }
 ```
+
+`vpnForwardAddress` and `vpnExitAddress` are the addresses from the last VPN exit address lookup (see Port Verification): `null` until a closed or undetermined port test prompts one, and for providers that report no forward address. `vpnExitAddressMismatch` is `true` only while both are known and differ, which is also exactly when the normal port-closed recovery is held. `vpnExitReconnects` is the number of reconnects made for the current mismatch and `vpnExitReconnectsMax` the limit, published so readers never hardcode it. `vpnExitReconnectGaveUp` can stay `true` while `vpnExitAddressMismatch` is `false` (after an open result or a failed lookup), so read it only under a mismatch, as the Status panel and the script do; it turns `true` only once the last reconnect's session has been looked at and still did not match - not when the count reaches the limit, which happens as soon as the last reconnect is dispatched - and it is what the Status panel and `SampleSendMail.ps1` key the "Held" wording on. `SampleSendMail.ps1` reports the two addresses, whether they match, and the reconnect state. `vpnProtonOverOpenVpn` is `true` when the last lookup ran over ProtonVPN's OpenVPN tunnel (adapter `ProtonVPN TUN`); the mismatch and give-up messages then advise switching ProtonVPN to Proton WireGuard (UDP), since mismatches were seen on OpenVPN sessions and not on Proton WireGuard ones.
 
 The `portVerified` field is `true` when the reachability test reported the port open, `false` when it reported closed, and `null` when no test ran this cycle (verification disabled, VPN disconnected, throttled, or the result could not be determined).
 
 The `waitingForVpn` field (omitted from the example above) is written as `true` only while the cycle is holding for the VPN during the startup grace period (see Startup Grace Period); the Status panel reads it to show "Startup grace period" in place of a next-sync countdown. It is absent (effectively `false`) on all other cycles.
 
-The `nextSyncAt` field is the instant the next cycle is due, written when the cycle ends. It is absolute rather than a duration for the same reason `recoveryHoldUntil` is: `timestamp` is stamped at the cycle's *start* while the wait begins at its *end*, so deriving the countdown as `timestamp + updateIntervalSeconds` runs it out early by however long the cycle took - up to the 30s a client restart can take, or the 120s an auto-recovery round trip can. `updateIntervalSeconds` is still published, so a consumer written before this key existed keeps working. Two cases publish the full interval even though the app waits only `ManualSyncWaitSeconds`: a manual **Sync Now** and a network-change re-check, both of which `MainForm` shortens after the status file is written.
+The `nextSyncAt` field is the instant the next cycle is due, written when the cycle ends. It is absolute rather than a duration for the same reason `recoveryHoldUntil` is: `timestamp` is stamped at the cycle's *start* while the wait begins at its *end*, so deriving the countdown as `timestamp + updateIntervalSeconds` runs it out early by however long the cycle took - up to about a minute a client restart can take, with its graceful-exit wait, or the 120s an auto-recovery round trip can. `updateIntervalSeconds` is still published, so a consumer written before this key existed keeps working. Two cases publish the full interval even though the app waits only `ManualSyncWaitSeconds`: a manual **Sync Now** and a network-change re-check, both of which `MainForm` shortens after the status file is written.
 
 The `status` field is one of:
 - **`success`** - port synced (or already matched)
@@ -658,7 +690,7 @@ The `status` field is one of:
 
 ### Standing Conditions in the Log
 
-Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, a provider reporting port forwarding unavailable, auto-recovery suspended at its consecutive-attempt cap, and a client pinned to an address its adapter no longer carries. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
+Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, an unset Static port adapter or port, a provider reporting port forwarding unavailable, auto-recovery suspended at its consecutive-attempt cap, a client pinned to an address its adapter no longer carries, a NAT-PMP gateway that does not grant the TCP mapping, a VPN that sends traffic out on a different address than it forwards the port on, an exit-address mismatch with no recovery target to reconnect, a status file that cannot be written, and the full details of an unexpected cycle error that repeats. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
 
 These are written through `LogManager.LogStateChange`, which records the last message logged under a key and writes again only when that message *changes*. Each site pairs it with a `ClearLogState` on the path where the condition clears, so a later recurrence is reported rather than swallowed as a duplicate. Because the comparison is on the message and not just the key, a condition that changes - a different adapter goes wrong, a different port becomes unusable - still announces itself.
 
@@ -673,9 +705,9 @@ Two nearby warnings deliberately stay per-cycle, because each cycle is a fresh o
 
 Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted history of port-affecting events in `qbPortWeaver.history.json` (same folder), capped at the 50 most recent entries. Three points record into it:
 
-- **Successful port change** (`UpdatePortAndNotifyAsync`) - with the cause (VPN-assigned or default-port fallback) and the previous port. When the change follows a recovery dispatch or a network-change-triggered cycle, the entry carries an "after recovery" / "after network change" suffix: MainForm marks a network-change cycle via a `RunAsync` parameter, and a dispatched recovery arms a pending flag that the next successful cycle consumes (recovery wins when both apply - it is the root cause)
+- **Port change** (`UpdatePortAndNotifyAsync`), also when the client restart after the write failed - with the cause (VPN-assigned, default-port fallback, or the configured Static port) and the previous port. When the change follows a recovery dispatch or a network-change-triggered cycle, the entry carries an "after recovery" / "after network change" suffix: MainForm marks a network-change cycle via a `RunAsync` parameter, and a dispatched recovery bumps a recovery counter that the next successful cycle consumes - only up to the value it read at its start, so a recovery dispatched during that cycle stays pending for the one after (recovery wins when both apply - it is the root cause)
 - **Confirmed-closed transition** (`HandlePortClosedResult`) - one entry per persistent condition, not one per re-confirming cycle, mirroring the balloon
-- **Auto-recovery dispatch** (`DispatchRecoveryAsync`, the failed-sync and port-closed triggers plus the manual recovery test) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
+- **Auto-recovery dispatch** (`DispatchRecoveryAsync`, the failed-sync and port-closed triggers, the exit-address reconnects, plus the manual recovery test) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
 
 Appends run on the sync loop thread, serialized by a lock with an atomic file replace. The Status panel reads the file on the UI thread without taking the lock; it can only ever see a complete old or new version, so the worst case is one transient empty refresh. The history persists across restarts deliberately - port changes are rare (VPN reconnects), so a session-only list would usually be empty.
 
@@ -689,11 +721,11 @@ Right-clicking the group offers **Clear Statistics**: the session counters zero 
 
 ## Diagnostics
 
-**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, internet connectivity, VPN connection, forwarded port, client running, client plugin *(Nicotine+ only)*, client reachable, ports in sync, interface binding *(qBittorrent and Nicotine+)*, client settings, and outside reachability.
+**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, internet connectivity, VPN connection, forwarded port, VPN exit address *(NAT-PMP and ProtonVPN)*, client running, client plugin *(Nicotine+ only)*, client reachable, ports in sync, interface binding *(qBittorrent and Nicotine+)*, client settings, and outside reachability.
 
-The **client plugin** check (`AddNicotinePluginResult`) is added only when the active client is a `NicotineClient`, and it runs *before* the reachability read on purpose: `NotInstalled`, `NotEnabled` and `NotRunning` are indistinguishable from a failed `GetPreferencesAsync`, so without this row every one of them would surface as a bare "Could not reach Nicotine+". It maps `NicotinePluginState` onto the same severities `SettingsForm` uses for the status label, through the shared `NicotinePluginInstaller.ConnectionSettingsDiffer` rule for the mismatch case, so the report and that label cannot disagree. `Ready` is the one state that is not a single verdict: it is `Pass` normally, but `Warn` when the saved URL or token differs from what the plugin published, which costs a failed request every cycle until the token refresh button is used.
+The **client plugin** check (`AddNicotinePluginResult`) is added only when the active client is a `NicotineClient`, and it runs *before* the reachability read on purpose: `NotInstalled`, `NotEnabled` and `NotRunning` are indistinguishable from a failed `GetPreferencesAsync`, so without this row every one of them would surface as a bare "Could not reach Nicotine+". It maps `NicotinePluginState` onto the same severities `SettingsForm` uses for the status label, through the shared `NicotinePluginInstaller.ConnectionSettingsDiffer` rule for the mismatch case, so the report and that label cannot disagree. `Ready` is the one state that is not a single verdict: it is `Pass` normally, but `Warn` when the saved URL or token differs from what the plugin published. Sync still works, because the client prefers the plugin's connection file from its first request, but the saved settings stay out of date until the token refresh button is used.
 
-The **internet connectivity** check (`AddInternetConnectivityResultAsync` → `InternetConnectivityProbe.IsInternetReachableAsync`) reports what auto-recovery's rate limiter sees, and sits beside the helper-service row because the two answer the same question: can recovery work on this machine at all. It is the inbound/outbound opposite of **outside reachability** - that one asks whether the world can reach this machine's forwarded port, this one whether this machine can reach anything. It is **Warn, never Fail**: the probe cannot tell "offline" from "this network drops outbound ICMP", says so in its own contract, and instructs callers not to read a false as grounds for refusing to act, so a red row would assert something it cannot know. Both causes are named in the hint for the same reason - a network that filters ping and a VPN killswitch holding traffic down while the tunnel is out are indistinguishable from here, and sending the reader to fix the wrong one is worse than naming both. The row exists because that ambiguity was otherwise invisible: on an ICMP-filtered network the probe answers false forever, `TryTakeRecoverySlotAsync` quietly spaces recovery out to 5, 10 and then 15 minutes, and every symptom points at qbPortWeaver. Note what the hint does **not** say: the limiter sits in `TriggerRecoveryIfDueAsync`, so it applies only when **Trigger auto-recovery when no port assigned or disconnected** is on, and only to that trigger - the port-closed trigger reaches `DispatchRecoveryAsync` directly, having already proven connectivity by fetching a port. Even where it applies, the first attempt of a streak runs immediately and only repeats wait. The hold's own Warn line now points here for the same reason.
+The **internet connectivity** check (`AddInternetConnectivityResultAsync` → `InternetConnectivityProbe.IsInternetReachableAsync`) reports what auto-recovery's rate limiter sees, and sits beside the helper-service row because the two answer the same question: can recovery work on this machine at all. It is the inbound/outbound opposite of **outside reachability** - that one asks whether the world can reach this machine's forwarded port, this one whether this machine can reach anything. It is **Warn, never Fail**: the probe cannot tell "offline" from "this network drops outbound ICMP", says so in its own contract, and instructs callers not to read a false as grounds for refusing to act, so a red row would assert something it cannot know. Both causes are named in the hint for the same reason - a network that filters ping and a VPN killswitch holding traffic down while the tunnel is out are indistinguishable from here, and sending the reader to fix the wrong one is worse than naming both. The row exists because that ambiguity was otherwise invisible: on an ICMP-filtered network the probe answers false forever, `RecoveryGate.TryTakeRecoverySlotAsync` quietly spaces recovery out to 5, 10 and then 15 minutes, and every symptom points at qbPortWeaver. Note what the hint does **not** say: the limiter sits in `RecoveryGate.TriggerRecoveryIfDueAsync`, so it applies only when **Trigger auto-recovery when no port assigned or disconnected** is on, and only to that trigger - the port-closed trigger reaches `DispatchRecoveryAsync` directly, having already proven connectivity by fetching a port. Even where it applies, the first attempt of a streak runs immediately and only repeats wait. The hold's own Warn line now points here for the same reason.
 
 The **interface binding** check covers all three things that can be wrong with a qBittorrent binding, in the order the sync cycle repairs them: the stale *token* (`CheckInterfaceBindingAsync`), the dead pinned *address* (`BuildPinnedAddressResultAsync`, see Stale Interface Address), and finally the adapter *name* against the VPN provider. The first two run whatever the provider is and outrank the name-based verdicts, because the name reads correctly in both cases while the client listens on nothing.
 
@@ -721,30 +753,29 @@ RunAsync
  └─ RunCoreAsync
      ├─ ReadConfig
      ├─ CreateVpnManagerAsync
-     │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only)
-     │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
-     │       └─ RegisterFailureAndTryRecoveryAsync
-     │           ├─ BuildCycleCountMessage
-     │           └─ TriggerRecoveryIfDueAsync
-     │               └─ DispatchRecoveryAsync
+     │   ├─ TrackRecoveryContext (a new provider or adapter: RecoveryGate.ResetForNewContext, port-closed trigger re-armed)
+     │   ├─ CreateStaticPortVpnManager (Static port only)
+     │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only; an adapter not found returns the cached manager or a MissingNatPmpAdapter stand-in, both handled as disconnected below)
      ├─ IVpnManager.IsVpnConnected
      ├─ HandleVpnDisconnectedAsync (if disconnected)
      │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)
-     │   └─ RegisterFailureAndTryRecoveryAsync
+     │   ├─ ForceVerifyAfterOutage, RestartClosedPortSequence
+     │   └─ RecoveryGate.RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
      │       └─ TriggerRecoveryIfDueAsync
      │           └─ DispatchRecoveryAsync
      ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
      │   ├─ MarkWaitingForVpn (startup grace: no port assigned yet)
+     │   ├─ ForceVerifyAfterOutage, RestartClosedPortSequence (no port read)
      │   ├─ SetSyncResult (if IVpnManager.PortForwardingUnavailable - reports and returns,
      │   │                 no failure registered, recovery never reached)
      │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
-     │   │   └─ RegisterFailureAndTryRecoveryAsync
+     │   │   └─ RecoveryGate.RegisterFailureAndTryRecoveryAsync
      │   │       ├─ BuildCycleCountMessage
      │   │       └─ TriggerRecoveryIfDueAsync
      │   │           └─ DispatchRecoveryAsync (held once _consecutiveRecoveries hits the cap)
-     │   ├─ ResetRecoveryCap (on a successful port read)
+     │   ├─ RecoveryGate.ResetFailureStreak, ResetOfflineRecoveryBackoff, ResetRecoveryCap (on a successful port read)
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
@@ -765,19 +796,37 @@ RunAsync
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync
          │   │   └─ IManagedClient.RestartAsync
-         │   ├─ PortHistoryManager.Append (on successful change)
+         │   ├─ PortHistoryManager.Append (whenever the port was written, even if the restart failed)
          │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IManagedClient.RestartAsync
-         ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
+         ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected; otherwise ClearVpnExitMismatch when verification is off)
          │   ├─ ShouldVerifyThisCycle (throttle)
          │   ├─ IManagedClient.TestListeningPortAsync
-         │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
-         │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
-         │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)
-         │       ├─ TryRebindClientAddressAsync (qBittorrent; if the adapter changed address)
-         │       │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
-         │       └─ DispatchRecoveryAsync
+         │   ├─ undetermined: CheckVpnExitAddressForUndeterminedAsync
+         │   │   ├─ CheckVpnExitAddressAsync (see below)
+         │   │   └─ ReconnectForExitAddressAsync (mismatch, port-closed recovery on)
+         │   ├─ open:
+         │   │   ├─ ClearVpnExitMismatch (keeps spent reconnects)
+         │   │   ├─ ResetSpentExitReconnectsIfMatchedAsync (after exit reconnects or a give-up, once settled)
+         │   │   │   ├─ ForwardAddressOfAsync (GetForwardAddressAsync, as in CheckVpnExitAddressAsync below)
+         │   │   │   └─ VpnExitAddress.QueryAsync
+         │   │   └─ HandlePortOpenResult (re-arms port-closed recovery)
+         │   └─ closed:
+         │       ├─ CheckVpnExitAddressAsync (confirming check, or a mismatch held)
+         │       │   ├─ ForwardAddressOfAsync (GetForwardAddressAsync; ProtonVPN: NAT-PMP query to its tunnel gateway, log address as fallback)
+         │       │   ├─ VpnExitAddress.QueryAsync (STUN through the VPN adapter)
+         │       │   ├─ mismatch: StartNewExitEpisodeIfForwardChanged, then the Warn and balloon on entry
+         │       │   ├─ no forward address: EndVpnExitHoldWithoutForward (then EndVpnExitHold, or RestartClosedPortSequence on a provider switch)
+         │       │   └─ otherwise: EndVpnExitHold (RestartClosedPortSequence when a hold ends; EndVpnExitEpisode when a match ends the episode)
+         │       ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
+         │       └─ MaybeTriggerPortClosedRecoveryAsync
+         │           ├─ mismatch held: ReconnectForExitAddressAsync (up to 3, spaced 2 minutes, then the give-up)
+         │           │   └─ DispatchRecoveryAsync
+         │           ├─ PortClosedRecoveryHeldBack (time floor, settle window; PortClosedHoldEnd for the status file)
+         │           ├─ TryRebindClientAddressAsync (qBittorrent with Fix interface binding on; if the adapter changed address)
+         │           │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
+         │           └─ DispatchRecoveryAsync (one-shot)
          └─ SetSyncResult
 ```
 
@@ -787,7 +836,11 @@ RunAsync
 
 ## Media Manager
 
-The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
+The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. It is also skipped while the Media Manager window is scanning, importing or clearing the cache; in the other direction, Scan Now, Import Now and Clear Cache wait for a running sync-cycle import to finish, and the window says it is waiting for another Media Manager task. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
+
+### One Media Operation at a Time
+
+The library index and the fingerprint caches are shared by the whole process, so `MediaManagerService._operationGate` lets only one media operation run at a time. Without it, a window scan using other library folders would replace the index a running sync-cycle import is still querying, and every source file would look new to that import. The two sides take the gate differently: the sync-cycle import tries it once and skips its turn (Debug line "Import skipped - the Media Manager window is scanning or importing"), because the next cycle runs it again anyway; Scan Now, Import Now and Clear Cache wait for it, logging "Waiting for another Media Manager task to finish" and showing the same text in the window. The task being waited for is normally the sync cycle's import; it can also be an operation from a window closed mid-run that has not reached a cancellation point yet - an Import Now copying a file, or a scan still listing a library folder.
 
 ### Unreachable Source/Library Folders
 
@@ -798,7 +851,7 @@ Every source and library path is verified with `MediaImporter.DirectoryExistsWit
 The Media Manager scan is split into two phases that partially overlap for performance.
 
 ```
-                           ┌─ BuildLibraryIndex ──────────────────────────────┐
+                           ┌─ BuildLibraryIndexAsync ─────────────────────────┐
                            │  Walk library folders, fingerprint in parallel    │  Run
   Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
                            │  Semaphore prevents duplicate builds. Sync cycles │
@@ -834,7 +887,7 @@ Both TV buckets flow into `TvShowProcessor`, which shares the post-resolution `S
 
 ### Lazy Fingerprint Deduplication
 
-If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `ClassifySourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+Media operations no longer overlap (see One Media Operation at a Time), so this is a safeguard within a single run: a `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
 
 ### Cache Layers
 
@@ -852,9 +905,9 @@ On a warm cache scan (no files changed since the last cycle), fingerprinting is 
 ```
 MediaManagerService.ImportAsync / ScanAsync
  ├─ MediaImporter.LoadSourceCache           (load source fingerprint cache from disk)
- ├─ TmdbCacheManager.Load / Evict         (load TMDB result cache from disk)
+ ├─ TmdbCacheManager.Load / EvictNullMovies / EvictNullTvShows (load TMDB result cache from disk)
  │
- ├─ [concurrent] MediaImporter.BuildLibraryIndex
+ ├─ [concurrent] MediaImporter.BuildLibraryIndexAsync
  │   ├─ LoadLibraryCache
  │   ├─ EnumerateLibraryFolder (per library folder)
  │   ├─ FingerprintLibraryFiles (per library folder, Parallel.ForEach degree 8)
@@ -866,8 +919,8 @@ MediaManagerService.ImportAsync / ScanAsync
  │
  ├─ ClassifySourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
  │   └─ ClassifyCandidates (per folder, Parallel.ForEach degree 8)
- │       ├─ MediaImporter.IsAlreadyInLibrary (per file)
- │       │   └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       ├─ GetOrComputeSourceFingerprint (per file, with Lazy deduplication)
+ │       ├─ MediaImporter.IsAlreadyInLibrary (the fingerprint against the library index)
  │       └─ TryClassifyAsFolderTv (when filename has no SxxExx pattern)
  │           ├─ FileNameParser.ParseEpisodePrefix (filename)
  │           └─ FileNameParser.ParseSeasonFromFolder (parent folder)

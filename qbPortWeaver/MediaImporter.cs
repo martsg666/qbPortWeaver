@@ -106,14 +106,14 @@ internal static partial class MediaImporter
             {
                 LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Delete(destinationPath);
-                File.Copy(sourcePath, destinationPath, overwrite: false);
+                CopyThroughPartial(sourcePath, destinationPath);
                 LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
         }
         else
         {
             LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
-            File.Copy(sourcePath, destinationPath, overwrite: false);
+            CopyThroughPartial(sourcePath, destinationPath);
             LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
         }
     }
@@ -201,12 +201,12 @@ internal static partial class MediaImporter
                     break;
 
                 case ImportMode.Copy:
-                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                    CopyThroughPartial(sourcePath, destinationPath);
                     LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 case ImportMode.Move:
-                    File.Move(sourcePath, destinationPath);
+                    MoveIntoLibrary(sourcePath, destinationPath);
                     LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
@@ -222,6 +222,65 @@ internal static partial class MediaImporter
 
         AddToLibraryIndex(destinationPath);
         return true;
+    }
+
+    // Suffix of the temporary name a copy is written under before it takes its library name.
+    private const string PartialSuffix = ".qbpw-partial";
+
+    // Copies sourcePath to destinationPath through a temporary name, then renames it into place. The import
+    // runs in the background and nothing waits for it when the app exits, so a copy cut short (exit, update,
+    // sign-out) used to leave a truncated file under the final library name, which the next cycles then
+    // reported as a destination conflict for good. Now only the temporary file can be left behind: a later
+    // attempt overwrites it, and the media server ignores it for its extension. The rename stays in one
+    // folder, so it is a single step. The temporary file is removed when the copy or the rename fails.
+    private static void CopyThroughPartial(string sourcePath, string destinationPath)
+    {
+        string partialPath = destinationPath + PartialSuffix;
+        try
+        {
+            File.Copy(sourcePath, partialPath, overwrite: true);
+            File.Move(partialPath, destinationPath, overwrite: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
+        {
+            TryDeletePartial(partialPath);
+            throw;
+        }
+    }
+
+    private static void TryDeletePartial(string partialPath)
+    {
+        try
+        {
+            File.Delete(partialPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MediaImporter.TryDeletePartial: could not remove '{Path.GetFileName(partialPath)}': {ex.Message}", Subsystem.MediaManager);
+        }
+    }
+
+    // Move mode. On one volume or share File.Move is a rename, which cannot be cut short. Across them it is a
+    // copy followed by a delete, so it goes through CopyThroughPartial like a copy, and the source is removed
+    // only once the library file is complete. A source that cannot be removed then is reported but does not
+    // fail the import: the library file is whole, and the next cycle finds it already in the library.
+    private static void MoveIntoLibrary(string sourcePath, string destinationPath)
+    {
+        if (string.Equals(Path.GetPathRoot(Path.GetFullPath(sourcePath)), Path.GetPathRoot(Path.GetFullPath(destinationPath)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            File.Move(sourcePath, destinationPath);
+            return;
+        }
+        CopyThroughPartial(sourcePath, destinationPath);
+        try
+        {
+            File.Delete(sourcePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogMessage($"Imported '{Path.GetFileName(destinationPath)}' but could not remove the source file: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+        }
     }
 
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be

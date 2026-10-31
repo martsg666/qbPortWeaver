@@ -2456,9 +2456,11 @@ public sealed class PortSyncService
     }
 
     // Restarts qBittorrent after a re-point, as the last step of it: the new binding takes for incoming
-    // connections at once, but DHT stays at 0 nodes until qBittorrent is restarted (seen live, and not the
-    // first time): incoming TCP works while DHT never recovers, and no VPN restart reaches it. So it is part
-    // of fixInterfaceBinding, which gates the re-point, not of the port-change restart setting.
+    // connections at once, but qBittorrent's DHT did not recover after its binding changed while it ran.
+    // Seen live after a mid-session re-point (DHT at 0 nodes until a manual restart), though another VPN
+    // client's drivers were active on that machine at the time, and reported by the user before that; a
+    // restart is what reliably brings DHT back, and no VPN restart reaches it. So it is part of
+    // fixInterfaceBinding, which gates the re-point, not of the port-change restart setting.
     // Skipped when the port changes in the same cycle with that restart on, whose own restart covers it; the
     // binding survives the restart (measured: a re-point and a port-change restart in the same second kept it).
     // Returns whether a restart was made. A failed one is logged and changes nothing else: the binding is

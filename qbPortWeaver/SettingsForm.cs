@@ -170,7 +170,7 @@ public partial class SettingsForm : Form
             "address the adapter no longer has, and - if the forwarded port stops answering after the adapter " +
             "changed address - nudges qBittorrent into listening on the new one. After a VPN protocol or provider switch " +
             "leaves qBittorrent on an adapter that is down, re-points it at the active VPN adapter and restarts " +
-            "qBittorrent, since its DHT does not come back on the new adapter without a restart. Apart from that " +
+            "qBittorrent, since its DHT may not come back on the new adapter without a restart. Apart from that " +
             "re-point, your settings are left as you had them.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");

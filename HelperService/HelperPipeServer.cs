@@ -1,9 +1,11 @@
 ﻿using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 
 namespace qbPortWeaver.HelperService;
 
@@ -15,7 +17,7 @@ namespace qbPortWeaver.HelperService;
 /// cycle-adapter (disable and re-enable a network adapter via netsh).
 /// The session token is validated against the caller's HKCU registry value via pipe impersonation.
 /// Note what this does and does not prove: because RunAsClient impersonates the *caller*,
-/// Registry.CurrentUser resolves to the caller's own hive, so a match shows only that the caller can
+/// the hive read (RegOpenCurrentUser) is the caller's own, so a match shows only that the caller can
 /// read a value they own - which any authenticated user can arrange for themselves. The token is a
 /// handshake that rejects malformed and stale connections, not an authentication boundary between
 /// users; the actual boundary is the pipe ACL. See "Trust boundary" below for what is genuinely
@@ -47,7 +49,7 @@ namespace qbPortWeaver.HelperService;
 /// outcome is a recovery reported wrongly or not run - no privilege is gained - and closing it would
 /// need a server-identity check in HelperServiceClient, so it is accepted alongside the boundary above.
 /// </summary>
-internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
+internal sealed partial class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
     private const int PipeErrorRetryDelayMs = 1000;
     // Bound for reading the client's request line after a connection is accepted. (Named
@@ -60,6 +62,16 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
     private const string LocalAppDataValue = "LOCALAPPDATA";
+
+    // RegOpenCurrentUser: the HKCU hive of the user the calling thread impersonates. Registry.CurrentUser
+    // cannot be used for that: the predefined HKEY_CURRENT_USER handle is cached for every thread of the
+    // process and does not follow impersonation, so this SYSTEM service would keep reading the hive of the
+    // first user it served (see TryReadClientHkcu).
+    private const int KeyRead = 0x20019; // KEY_READ
+    private const int ErrorSuccess = 0;
+
+    [LibraryImport("advapi32.dll")]
+    private static partial int RegOpenCurrentUser(int samDesired, out SafeRegistryHandle phkResult);
 
     private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
 
@@ -225,6 +237,20 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     // SYSTEM service can see a per-user HKCU value: the impersonation ends with this method, well
     // before the action runs. Reading it now and handing it to the logger lets the helper honour the
     // same switch the main app does, without widening the pipe message format.
+    // Opens the HKCU hive of the user this thread impersonates (RegOpenCurrentUser), or null when it cannot
+    // be opened. Call only inside RunAsClient. The returned key owns the handle and closes it when disposed.
+    private RegistryKey? OpenImpersonatedUserHive()
+    {
+        int status = RegOpenCurrentUser(KeyRead, out SafeRegistryHandle handle);
+        if (status != ErrorSuccess)
+        {
+            handle.Dispose();
+            logger.LogWarning("RegOpenCurrentUser failed with error {Status}", status);
+            return null;
+        }
+        return RegistryKey.FromHandle(handle);
+    }
+
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath, out bool debugMode)
     {
         logFilePath = string.Empty;
@@ -236,11 +262,13 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         {
             pipe.RunAsClient(() =>
             {
-                // Registry.CurrentUser resolves to the impersonated user's HKCU hive on .NET Core/5+
-                // (via NtOpenKey under the thread's impersonation token). This is the documented
-                // .NET behavior on Windows and holds for all supported targets. The alternative -
-                // RegOpenCurrentUser P/Invoke - is only needed if this assumption ever breaks.
-                using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+                // The impersonated user's own hive, through RegOpenCurrentUser, which uses this thread's
+                // token. Not Registry.CurrentUser: that is the process-wide cached HKEY_CURRENT_USER, which
+                // stays on the first user this service read it for, so a second user on the machine would
+                // be checked against the first one's token and rejected. No hive leaves tokenValid false.
+                using RegistryKey? userHive = OpenImpersonatedUserHive();
+                if (userHive is null) return;
+                using var appKey = userHive.OpenSubKey(AppIdentity.AppRegistryKey);
                 var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.
                 // string.Equals returns early on the first mismatch, leaking token prefix
@@ -262,14 +290,14 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
                 if (tokenValid)
                 {
-                    using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
+                    using var envKey = userHive.OpenSubKey(VolatileEnvironmentKey);
                     var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
                     if (!string.IsNullOrEmpty(localAppData))
                         derivedPath = Path.Combine(localAppData, AppIdentity.AppName, AppIdentity.LogFileName);
 
                     // Stored as "True"/"False" by the main app. Anything unreadable or unparseable
                     // leaves debug logging off, which is the quieter and safer default.
-                    using var extraKey = Registry.CurrentUser.OpenSubKey(
+                    using var extraKey = userHive.OpenSubKey(
                         $@"{AppIdentity.SettingsRegistryKey}\{AppIdentity.ExtraSettingsSection}");
                     derivedDebugMode = extraKey?.GetValue(AppIdentity.DebugModeValueName) is string flag &&
                                        bool.TryParse(flag, out bool parsed) && parsed;

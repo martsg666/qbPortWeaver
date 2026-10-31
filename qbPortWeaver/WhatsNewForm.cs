@@ -17,6 +17,10 @@ public partial class WhatsNewForm : Form
         "a restart its DHT stays at 0 nodes. This is part of the qBittorrent setting \"Fix the network interface " +
         "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
         "adapter changes\". With it off, and for Nicotine+, you are warned instead. Diagnostics reports it too.\n\n" +
+        "Fixed: Media Manager no longer imports sample clips\n" +
+        "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
+        "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +
+        "skipped.\n\n" +
         "Changed: the VPN exit address check now covers PIA\n" +
         "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
         "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +

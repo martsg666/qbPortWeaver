@@ -659,8 +659,11 @@ public static class MediaManagerService
     // IgnoreInaccessible = true silently skips permission-denied folders.
     // Wrapped in InvokeWithSmbRetry to ride out transient ERROR_INVALID_FUNCTION responses
     // from SMB servers during connection renegotiation / oplock breaks.
-    private static List<FileInfo> EnumerateSourceFolder(string folder) =>
-        MediaImporter.InvokeWithSmbRetry(folder, () =>
+    // Sample clips are never imported (see FileNameParser.IsSampleFile); one Debug line per folder carries the
+    // count, not one per file, since the listing runs every cycle.
+    private static List<FileInfo> EnumerateSourceFolder(string folder)
+    {
+        List<FileInfo> files = MediaImporter.InvokeWithSmbRetry(folder, () =>
             new DirectoryInfo(folder)
                 .EnumerateFiles("*", new EnumerationOptions
                 {
@@ -670,6 +673,11 @@ public static class MediaManagerService
                 })
                 .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && MediaImporter.IsFileReadyForImport(fi))
                 .ToList());
+        int samples = files.RemoveAll(fi => FileNameParser.IsSampleFile(fi.FullName));
+        if (samples > 0)
+            LogManager.Instance.LogDebug($"MediaManagerService.EnumerateSourceFolder: skipped {TextFormat.Pluralize(samples, "sample file")} in '{folder}'");
+        return files;
+    }
 
     // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
     // Requires BuildLibraryIndex to have completed before calling - IsAlreadyInLibrary uses the index.

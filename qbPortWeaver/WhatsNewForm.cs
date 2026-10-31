@@ -28,6 +28,9 @@ public partial class WhatsNewForm : Form
         "Correcting a red TV row to \"Show Name (Year)\" without the episode code now keeps the episode number " +
         "from the source file instead of skipping the row, and rows that have no episode number anywhere are " +
         "counted in the status message.\n\n" +
+        "Fixed: Scan Now with only one library set\n" +
+        "With only a Movies or only a TV shows library set, Scan Now said \"All files already imported.\" for " +
+        "source files of the other type. It now says how many were skipped and which library to set.\n\n" +
         "Fixed: Media Manager no longer imports sample clips\n" +
         "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
         "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +

@@ -215,7 +215,18 @@ public static class MediaManagerService
         // offline: the window points the user at the log, so the log has to say it each time.
         if (unreadableSources.Length > 0)
             LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
-        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable);
+
+        // A media type whose library path is empty is skipped by design (ScanSourceFolderAsync), but the
+        // window would then report those files as already imported. Counted so it can say why instead.
+        int moviesWithoutLibrary = string.IsNullOrWhiteSpace(moviesLibraryPath)
+            ? classified.Sum(c => c.Items.MovieFiles.Length) : 0;
+        int episodesWithoutLibrary = string.IsNullOrWhiteSpace(tvShowsLibraryPath)
+            ? classified.Sum(c => c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length) : 0;
+        if (moviesWithoutLibrary + episodesWithoutLibrary > 0)
+            LogManager.Instance.LogMessage(
+                $"Scan skipped {TextFormat.Pluralize(moviesWithoutLibrary, "movie file")} and {TextFormat.Pluralize(episodesWithoutLibrary, "TV episode file")} with no library path set for their type",
+                LogLevel.Info, Subsystem.MediaManager);
+        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable, moviesWithoutLibrary, episodesWithoutLibrary);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -955,4 +966,5 @@ public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bo
 /// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
 /// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported", and whether TMDB was
 /// unavailable for part of the scan, so its unmatched rows are not presented as titles TMDB does not know.</summary>
-public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false);
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false,
+    int MoviesWithoutLibrary = 0, int EpisodesWithoutLibrary = 0);

@@ -522,7 +522,20 @@ public partial class MediaManagerForm : Form
             return result.UnreadableSourceFolders.Length > 0
                 ? "Some source folders could not be read, and TMDB was unavailable. See the log."
                 : "TMDB could not be reached or rejected the API key; some files were not looked up.";
-        return UnreadableSourcesStatus(result, sourceFolders.Length);
+        return UnreadableSourcesStatus(result, sourceFolders.Length) ?? NoLibraryStatus(result);
+    }
+
+    // With nothing to propose, the grid summary would read "All files already imported." for files that
+    // were skipped only because their type has no library path. Null otherwise: when there are proposals,
+    // the summary is about them, and the log carries the skipped count.
+    private static string? NoLibraryStatus(MediaScanResult result)
+    {
+        if (result.Proposals.Count > 0) return null;
+        if (result.MoviesWithoutLibrary > 0)
+            return $"{TextFormat.Pluralize(result.MoviesWithoutLibrary, "movie file")} skipped: set the Movies library to import them.";
+        if (result.EpisodesWithoutLibrary > 0)
+            return $"{TextFormat.Pluralize(result.EpisodesWithoutLibrary, "TV episode file")} skipped: set the TV shows library to import them.";
+        return null;
     }
 
     // The grid summary alone would read "All files already imported." for a source folder that could not

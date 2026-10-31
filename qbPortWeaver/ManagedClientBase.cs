@@ -175,7 +175,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // timeout elapses. A 5xx keeps polling: a reverse proxy in front of the client answers 502/503 while the
     // client behind it is still starting. A short per-probe cancellation avoids blocking on a slow response
     // mid-startup. The timeout is a Warn, so the failures the next calls log have their cause beside them.
-    private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
+    protected async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
     {
         // Monotonic: a clock correction mid-startup must not cut the probe short or extend it.
         var probeTimer = Stopwatch.StartNew();

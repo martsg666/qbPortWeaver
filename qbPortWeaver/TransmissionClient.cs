@@ -363,6 +363,9 @@ public sealed class TransmissionClient : ManagedClientBase
                 return false;
             }
 
+            // Running in the SCM is not the same as answering RPC: wait for it like the process-mode paths
+            // do (LaunchAndWaitAsync), so the next call does not fail against a service still starting.
+            await WaitForApiReadyAsync(cancellationToken).ConfigureAwait(false);
             return true;
         }
         // Excludes every OperationCanceledException, not just a token-cancelled one. That is safe here

@@ -1109,6 +1109,9 @@ public partial class MediaManagerForm : Form
         if (raw.Length == 0) return raw;
 
         string name = FileNameParser.SanitizeFileName(Path.GetFileName(raw));
+        // A name of only dots ("." or "..") survives both steps above, and RebuildProposedDir would then name
+        // the movie folder "." or "..", importing into the library root or its parent. Treated as no name.
+        if (name.Trim('.', ' ').Length == 0) return string.Empty;
         // An import never changes the container, so the extension always comes from the source file:
         // a name typed without one would otherwise import as a file nothing opens, and a dotted title
         // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down. A name typed

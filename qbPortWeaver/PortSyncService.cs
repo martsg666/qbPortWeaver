@@ -2394,8 +2394,11 @@ public sealed class PortSyncService
     // interfaces (CheckInterfaceMatch's leak case), no provider adapter up (an ordinary disconnect, left
     // alone like CheckInterfaceBindingAsync leaves an absent one), or the bound adapter is itself up, so a
     // binding the user chose to a live adapter is never overridden - a live adapter of the wrong provider
-    // stays CheckInterfaceMatch's mismatch warning. Moving a client off a dead adapter onto the VPN's
-    // live one cannot open a leak. Shared by the re-point, the warning and Diagnostics, so the three
+    // stays CheckInterfaceMatch's mismatch warning. The client goes to the adapter the provider setting
+    // names: for ProtonVPN and PIA one of their tunnel adapters, for NAT-PMP and Static port whichever
+    // adapter was chosen in Settings, which can be a physical one, so a client bound to a VPN adapter while
+    // the provider is set to a physical adapter (already a standing mismatch warning) is moved onto it
+    // when the VPN adapter goes down. Shared by the re-point, the warning and Diagnostics, so the three
     // cannot disagree.
     internal static string? ActiveAdapterInsteadOf(IVpnManager vpnManager, string? interfaceName)
     {

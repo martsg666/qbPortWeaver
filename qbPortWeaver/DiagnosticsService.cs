@@ -500,7 +500,11 @@ public static class DiagnosticsService
         // dead pinned address is precisely the case where the name - which is all the other branches
         // compare - still reads correctly while the client listens on nothing. Reporting "Bound to 'X'"
         // as a pass here is what let the token case go unnoticed, so both outrank every name-based
-        // verdict. Same order as the sync loop, which repairs the token before it reads the address.
+        // verdict. The token-then-address order matches the sync loop, which repairs the token before it
+        // reads the address. The loop differs in one respect: it re-points a client bound to a down
+        // adapter (RepointToActiveAdapterAsync) before either, while this checks that case last, below.
+        // So with an address pinned on a down adapter, this reports the pinned address as waiting for a
+        // usable one rather than "which is down"; a rare setup, left as is rather than reorder every row.
         if (client is QBittorrentClient qbClient)
         {
             var (stale, expectedToken) = await qbClient.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);

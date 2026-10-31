@@ -4,9 +4,10 @@ namespace qbPortWeaver;
 
 /// <summary>
 /// Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.
-/// Each sync cycle spawns two piactl subprocesses - one for IsVpnConnected, one for GetVpnPortAsync.
+/// Each sync cycle spawns two piactl subprocesses - one for IsVpnConnected, one for GetVpnPortAsync -
+/// and a third (get vpnip, for GetForwardAddressAsync) on the cycles that run the exit-address check.
 /// This is accepted design: piactl is the authoritative source and has no library API.
-/// A stalled PIA client causes up to two sequential 5s timeouts per cycle.
+/// A stalled PIA client causes up to two sequential 5s timeouts per cycle, three on those cycles.
 /// </summary>
 public sealed class PiaVpnManager : IVpnManager
 {

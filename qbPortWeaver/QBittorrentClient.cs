@@ -285,7 +285,7 @@ public sealed class QBittorrentClient : ManagedClientBase
         var live = await GetNetworkInterfacesAsync(cancellationToken).ConfigureAwait(false);
         if (live is null) return (false, null);
 
-        string? expected = live.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.Ordinal)).Value;
+        string? expected = live.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.OrdinalIgnoreCase)).Value;
         if (expected is null)
         {
             // The bound adapter is not present right now. That is the ordinary VPN-disconnected state,

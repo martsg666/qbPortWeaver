@@ -439,7 +439,12 @@ public partial class MainForm : Form
                 "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?"))
             return;
 
-        LogManager.Instance.ClearLogs();
+        if (LogManager.Instance.ClearLogs() is { } error)
+        {
+            // Logged after ClearLogs has released its lock. The Warn raises the usual badge and balloon.
+            LogManager.Instance.LogMessage($"Could not clear all log files: {error}", LogLevel.Warn);
+            return;
+        }
         ResetLogAlerts();
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
     }

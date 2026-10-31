@@ -290,7 +290,7 @@ public static class DiagnosticsService
     // Whether traffic leaves from the address the port is forwarded on - the same comparison the sync
     // loop makes at a confirming closed check, at any closed check while a mismatch is held, and at an
     // undetermined one (see VpnExitAddress). Only for a provider that reports the
-    // forward address (NAT-PMP and ProtonVPN); for the others there is nothing to compare, so the row is
+    // forward address (NAT-PMP, ProtonVPN and PIA); for the others there is nothing to compare, so the row is
     // left out rather than shown as a permanent Skip. Run whether or not the port is closed: this is the
     // row that explains a closed "Port reachable" below, and it is the one the user acts on.
     private static async Task AddVpnExitAddressResultAsync(List<DiagnosticResult> results, IVpnManager vpn, int port, CancellationToken cancellationToken)
@@ -485,6 +485,14 @@ public static class DiagnosticsService
                 "Use Sync Now to align them immediately; the next cycle would do it automatically."));
     }
 
+    // Hint for a client bound to a down adapter of the provider (a protocol switch). Only qBittorrent's
+    // binding is re-pointed by the sync loop; Diagnostics never writes, so it says what the next sync does.
+    private static string ActiveAdapterHint(IManagedClient client, string activeAdapter) =>
+        client is QBittorrentClient
+            ? $"Select '{activeAdapter}' as the network interface in {client.ClientName}. With \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
+              "on in Settings, the next sync does it for you."
+            : $"Select '{activeAdapter}' as the network interface in {client.ClientName}.";
+
     private static async Task AddInterfaceResultAsync(List<DiagnosticResult> results, IManagedClient client,
         IVpnManager? vpn, string? interfaceName, CancellationToken cancellationToken)
     {
@@ -500,7 +508,7 @@ public static class DiagnosticsService
             {
                 results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
                     $"Bound to '{interfaceName}' by a stale identifier - {client.ClientName} is not listening on that adapter",
-                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
                     "in Settings. Restarting the client does not clear it, because the value is stored in its configuration."));
                 return;
             }
@@ -525,6 +533,10 @@ public static class DiagnosticsService
         if (interfaceName.Length == 0)
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn, "Client is bound to all interfaces - traffic may leak outside the VPN",
                 "Bind the client's network interface to your VPN adapter in its settings."));
+        else if (PortSyncService.ActiveAdapterInsteadOf(vpn, interfaceName) is { } activeAdapter)
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn,
+                $"Bound to '{interfaceName}', which is down - the active VPN adapter is '{activeAdapter}'",
+                ActiveAdapterHint(client, activeAdapter)));
         else if (vpn.IsAdapterMatch(interfaceName))
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Pass, $"Bound to '{interfaceName}'"));
         else
@@ -577,7 +589,7 @@ public static class DiagnosticsService
 
         return new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
             $"{detail} - {client.ClientName} cannot accept incoming connections",
-            $"Correct the bind address in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+            $"Correct the bind address in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
             "in Settings, which re-points it at a live address automatically.");
     }
 

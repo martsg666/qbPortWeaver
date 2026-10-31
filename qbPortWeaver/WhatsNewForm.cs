@@ -9,6 +9,18 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.1\n\n" +
+        "Fixed: switching VPN protocol or provider no longer leaves the client on the old adapter\n" +
+        "ProtonVPN and PIA use a different network adapter for each protocol, and each provider has its own, " +
+        "so after a switch the client stayed bound to the old adapter, which is down, and the port stayed " +
+        "closed. qbPortWeaver now re-points qBittorrent at the active adapter and restarts it, since without " +
+        "a restart its DHT stays at 0 nodes. This is part of the qBittorrent setting \"Fix the network interface " +
+        "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
+        "adapter changes\". With it off, and for Nicotine+, you are warned instead. Diagnostics reports it too.\n\n" +
+        "Changed: the VPN exit address check now covers PIA\n" +
+        "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
+        "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +
+        "Previously released\n\n" +
         "New in 2.7.0\n\n" +
         "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +
         "Testing for this release found that ProtonVPN's OpenVPN connections can forward your port on one " +
@@ -124,7 +136,6 @@ public partial class WhatsNewForm : Form
         "Diagnostics now warns when the helper service is from a different version than the app. The " +
         "Nicotine+ plugin moves to a free port only when its port is taken, and otherwise says to check " +
         "its Address setting. Closing qbPortWeaver during a sync no longer writes errors to the log.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +

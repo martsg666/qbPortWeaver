@@ -471,7 +471,7 @@ public static partial class FileNameParser
     // writes, so the project-wide "no em dashes" rule does not apply here any more than the "no media
     // titles" rule applies to the codec tokens in _cutoffTokens. A sweep that strips it would stop the
     // parser recognising the real filenames that use an em dash as the separator. Leave all three.
-    [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-–—]\s*)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-\u2013\u2014]\s*)", RegexOptions.IgnoreCase)]
     private static partial Regex SitePrefixRegex();
 
     // Matches underscore-prefixed language codes at end of string: _VOSTFR, _VF-EN, _VO-FR, etc.

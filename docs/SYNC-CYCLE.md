@@ -298,7 +298,11 @@ All client communication goes through the `IManagedClient` interface, with imple
 
 When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the VPN adapter: an exact, case-insensitive match on the chosen adapter for NAT-PMP and Static port (it is picked from the live Windows list, so it is already the name the client reports), and, for ProtonVPN and PIA, a case-insensitive match on the registry-configured adapter names: the bound name contains a configured name, or a configured name starts with it, so a short unrelated adapter such as "VPN" does not pass for "ProtonVPN". A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
-> If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
+### Adapter Left Behind by a Protocol Switch *(ProtonVPN and PIA)*
+
+ProtonVPN and PIA name their tunnel adapter after the protocol (`ProTUN`, `ProtonVPN` / `ProtonVPN TUN`; `wgpia0`, `PIA OpenVPN WinTUN Adapter`), and both names match the provider, so after a protocol switch a client still bound to the old adapter passes the name check above, and its token still resolves, so the stale-binding check below passes too - while the old adapter is down and the client listens on nothing. Seen live with PIA: OpenVPN to WireGuard left qBittorrent on the WinTUN adapter, the port read closed, and port-closed recovery would have restarted the VPN, which cannot help.
+
+`PortSyncService.ActiveAdapterInsteadOf` names the case: the bound adapter matches the provider, `IVpnManager.ActiveAdapterName` (the first up adapter carrying one of the provider's names; null for NAT-PMP and Static port, whose single adapter is picked in Settings) is a different adapter, and the bound one is not up. A bound adapter that is up is never overridden, and no adapter up at all is an ordinary disconnect, left alone. For qBittorrent with `fixInterfaceBinding` on, `RepointToActiveAdapterAsync` runs before the name check: it reads the active adapter's token from `networkInterfaceList`, writes the name and token through `RepairInterfaceBindingAsync` (Warn, then Info), restarts the closed-port sequence, and the rest of the cycle reads the new adapter. One attempt per streak, as for the stale token; an adapter not yet in qBittorrent's list spends no attempt. Otherwise - the setting off, the write not taken, or Nicotine+, whose binding the app cannot change - `CheckInterfaceMatch` warns once (`is bound to 'X', which is down - the active <provider> adapter is 'Y'`) with a balloon, and Diagnostics reports the same on the Interface binding row.
 
 ### Stale Interface Binding *(qBittorrent only)*
 
@@ -780,7 +784,10 @@ RunAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IManagedClient.GetPreferencesAsync
-         ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
+         ├─ RepointToActiveAdapterAsync (qBittorrent; ProtonVPN and PIA after a protocol switch)
+         │   ├─ ActiveAdapterInsteadOf
+         │   └─ QBittorrentClient.GetInterfaceTokenAsync, RepairInterfaceBindingAsync
+         ├─ CheckInterfaceMatch (qBittorrent and Nicotine+; also warns via ActiveAdapterInsteadOf)
          ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
          │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)

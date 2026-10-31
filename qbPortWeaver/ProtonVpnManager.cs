@@ -95,9 +95,10 @@ public sealed partial class ProtonVpnManager : IVpnManager
     public bool IsProtonVpnOverOpenVpn =>
         string.Equals(ActiveAdapterName, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
 
+    /// <inheritdoc />
     // The first up adapter carrying one of ProtonVPN's names, read live: a protocol switch changes it.
     // The two configured names are read once, not per adapter.
-    private static string? ActiveAdapterName
+    public string? ActiveAdapterName
     {
         get
         {

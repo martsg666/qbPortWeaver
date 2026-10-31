@@ -84,6 +84,9 @@ public sealed class PortSyncService
     // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private bool _interfaceBindingRepairAttempted;
+    // True once qBittorrent has been re-pointed from a down adapter of the provider to its active one (see
+    // RepointToActiveAdapterAsync) for the current streak; same one-attempt rule as the flag above.
+    private bool _interfaceRepointAttempted;
     // Addresses the bound adapter carried on the previous cycle, or null before the first successful
     // read. Lives here rather than on the client because the client is constructed and disposed once
     // per cycle (see the `using var manager` in RunCoreAsync), so it cannot remember anything, and the
@@ -1323,6 +1326,11 @@ public sealed class PortSyncService
         status[StatusKeys.ClientPreviousPort] = currentPort.Value;
         LogManager.Instance.LogMessage($"{manager.ClientName} port found: {currentPort.Value}", LogLevel.Info);
 
+        // A protocol switch moves the tunnel to another of the provider's adapters; re-point qBittorrent
+        // first, so the checks below read the adapter it is bound to from now on.
+        if (manager is QBittorrentClient repointClient && config.VpnManager is not null)
+            currentInterfaceName = await RepointToActiveAdapterAsync(repointClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+
         // Warn if the client's network interface doesn't match the configured VPN provider
         if (config.VpnManager is not null && config.WarnOnInterfaceMismatch && manager.SupportsInterfaceMismatchWarning)
             CheckInterfaceMatch(manager.ClientName, currentInterfaceName, config.VpnManager);
@@ -2338,6 +2346,15 @@ public sealed class PortSyncService
                 $"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
             balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
         }
+        else if (ActiveAdapterInsteadOf(vpnManager, interfaceName) is { } activeAdapter)
+        {
+            // A provider adapter, but not the one carrying the tunnel: the client listens on nothing.
+            // qBittorrent reaches here only when the re-point is off or did not take.
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} is bound to '{interfaceName}', which is down - the active {vpnManager.ProviderName} adapter is '{activeAdapter}'. " +
+                $"Select '{activeAdapter}' as the network interface in {clientName}", LogLevel.Warn);
+            balloonMessage = $"{clientName} is bound to '{interfaceName}', which is down - select '{activeAdapter}'.";
+        }
         else
         {
             LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: {clientName} interface '{interfaceName}' matches '{vpnManager.ProviderName}'");
@@ -2352,6 +2369,66 @@ public sealed class PortSyncService
         }
 
         _lastInterfaceMismatchMessage = RaiseInterfaceBalloonIfNew(balloonMessage, _lastInterfaceMismatchMessage);
+    }
+
+    // The provider's active adapter when the client is bound to another adapter of the same provider that
+    // is down - what a protocol switch leaves behind, since ProtonVPN and PIA name the adapter after the
+    // protocol. Null otherwise: not a provider adapter (CheckInterfaceMatch's mismatch case), no adapter
+    // up (an ordinary disconnect, left alone like CheckInterfaceBindingAsync leaves an absent one), or the
+    // bound adapter is itself up, so a choice the user made between two live adapters is never overridden.
+    // Shared by the re-point, the warning and Diagnostics, so the three cannot disagree.
+    internal static string? ActiveAdapterInsteadOf(IVpnManager vpnManager, string? interfaceName)
+    {
+        if (string.IsNullOrEmpty(interfaceName) || !vpnManager.IsAdapterMatch(interfaceName)) return null;
+        string? active = vpnManager.ActiveAdapterName;
+        if (active is null || string.Equals(active, interfaceName, StringComparison.OrdinalIgnoreCase)) return null;
+        bool boundIsUp = VpnAdapter.GetActiveInterfaces()
+            .Exists(nic => nic.Name.Equals(interfaceName, StringComparison.OrdinalIgnoreCase));
+        return boundIsUp ? null : active;
+    }
+
+    // Re-points qBittorrent from a down adapter of the provider to the active one (see ActiveAdapterInsteadOf)
+    // when fixInterfaceBinding is on, and returns the interface name the rest of the cycle should use.
+    // Restarting the VPN cannot fix this - the binding is in qBittorrent's configuration - so without it the
+    // port reads closed and port-closed recovery restarts the VPN for nothing. One attempt per streak, like
+    // the stale-token repair. Off, or not taken, CheckInterfaceMatch warns instead.
+    private async Task<string?> RepointToActiveAdapterAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    {
+        if (config.VpnManager is not { } vpnManager || ActiveAdapterInsteadOf(vpnManager, interfaceName) is not { } active)
+        {
+            _interfaceRepointAttempted = false;
+            return interfaceName;
+        }
+        if (!config.FixInterfaceBinding) return interfaceName;
+        if (_interfaceRepointAttempted)
+        {
+            LogManager.Instance.LogDebug($"PortSyncService.RepointToActiveAdapterAsync: {client.ClientName} still bound to '{interfaceName}' after a re-point - not retrying until it is healthy");
+            return interfaceName;
+        }
+
+        // Not in qBittorrent's list yet (it enumerates on request, but an adapter that has just come up can
+        // lag): nothing was written, so no attempt is spent and the next cycle tries again.
+        if (await client.GetInterfaceTokenAsync(active, cancellationToken).ConfigureAwait(false) is not { } token)
+        {
+            LogManager.Instance.LogDebug($"PortSyncService.RepointToActiveAdapterAsync: '{active}' is not in {client.ClientName}'s adapter list yet");
+            return interfaceName;
+        }
+
+        _interfaceRepointAttempted = true;
+        LogManager.Instance.LogMessage(
+            $"{client.ClientName} is bound to '{interfaceName}', which is down - re-pointing it at '{active}', the active {vpnManager.ProviderName} adapter",
+            LogLevel.Warn);
+        if (!await client.RepairInterfaceBindingAsync(active, token, cancellationToken).ConfigureAwait(false))
+        {
+            LogManager.Instance.LogMessage($"Could not re-point the {client.ClientName} network interface binding - select '{active}' in {client.ClientName}", LogLevel.Error);
+            return interfaceName;
+        }
+
+        LogManager.Instance.LogMessage($"Re-pointed the {client.ClientName} network interface binding to '{active}'", LogLevel.Info);
+        // The closed checks so far were taken on the dead adapter, and the first one after the write is
+        // usually qBittorrent still opening its listeners, so the sequence starts again.
+        RestartClosedPortSequence();
+        return active;
     }
 
     // Detects a stale qBittorrent interface binding and re-points it at the adapter qBittorrent

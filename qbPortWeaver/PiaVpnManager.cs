@@ -82,6 +82,19 @@ public sealed class PiaVpnManager : IVpnManager
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
+    /// <inheritdoc />
+    // The first up adapter carrying PIA's name, read live: PIA uses "PIA OpenVPN WinTUN Adapter" for OpenVPN
+    // and "wgpia0" for WireGuard, so a protocol switch changes it. The configured name is read once, not
+    // per adapter.
+    public string? ActiveAdapterName
+    {
+        get
+        {
+            string name = Config.GetAdapterName();
+            return VpnAdapter.GetActiveInterfaces().Find(nic => VpnRegistryConfig.AdapterNamesMatch(name, nic.Name))?.Name;
+        }
+    }
+
     private int? GetVpnPortCore()
     {
         try

@@ -10,11 +10,11 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.1\n\n" +
-        "PLACEHOLDER - replace before release\n" +
-        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
-        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
-        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
-        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Fixed: switching VPN protocol no longer leaves the client on the old adapter\n" +
+        "ProtonVPN and PIA use a different network adapter for each protocol, so after a switch the client " +
+        "stayed bound to the old adapter, which is down, and the port stayed closed. qbPortWeaver now " +
+        "re-points qBittorrent at the active adapter when \"Fix the network interface binding when it goes " +
+        "stale\" is on, and warns you otherwise, and for Nicotine+. Diagnostics reports it too.\n\n" +
         "Previously released\n\n" +
         "New in 2.7.0\n\n" +
         "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +

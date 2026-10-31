@@ -583,6 +583,17 @@ public sealed class QBittorrentClient : ManagedClientBase
         return true;
     }
 
+    /// <summary>
+    /// The token qBittorrent's live adapter list gives the adapter named <paramref name="interfaceName"/>;
+    /// <see langword="null"/> when the adapter is not in the list or the list cannot be read. Ignoring case,
+    /// because the name comes from Windows rather than from qBittorrent.
+    /// </summary>
+    internal async Task<string?> GetInterfaceTokenAsync(string interfaceName, CancellationToken cancellationToken = default)
+    {
+        var live = await GetNetworkInterfacesAsync(cancellationToken).ConfigureAwait(false);
+        return live?.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.OrdinalIgnoreCase)).Value;
+    }
+
     // Live adapters as (name, token) pairs, or null when the list cannot be read - which includes
     // qBittorrent versions predating the endpoint, so callers degrade to doing nothing.
     private Task<List<(string Name, string Value)>?> GetNetworkInterfacesAsync(CancellationToken cancellationToken) =>

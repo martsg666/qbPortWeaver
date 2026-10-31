@@ -1326,10 +1326,55 @@ public sealed class PortSyncService
         status[StatusKeys.ClientPreviousPort] = currentPort.Value;
         LogManager.Instance.LogMessage($"{manager.ClientName} port found: {currentPort.Value}", LogLevel.Info);
 
+        bool restartedForRepoint = await CheckClientInterfaceAsync(
+            manager, currentInterfaceName, config, portWillChange: currentPort.Value != targetPort, cancellationToken).ConfigureAwait(false);
+
+        await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
+
+        if (currentPort.Value == targetPort)
+        {
+            status[StatusKeys.ClientPort] = currentPort.Value;
+            LogManager.Instance.LogMessage($"{manager.ClientName} port {currentPort.Value} already matches the target port - no update needed", LogLevel.Info);
+        }
+        else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
+        {
+            // The write or the restart after it failed - skip the RestartOnDisconnect check. A failed write
+            // is retried next cycle; a failed restart is not, since the port then already matches.
+            return;
+        }
+
+        // Check connection status and restart if offline - skip if a restart was already performed
+        // by ApplyPortUpdateAsync (port changed + restart enabled) or after a re-point, to avoid a redundant
+        // cycle: a qBittorrent a second into its restart reads disconnected.
+        bool restartAttemptedThisCycle = restartedForRepoint || (config.Restart && status[StatusKeys.PortChanged] is true);
+        if (config.RestartOnDisconnect && !restartAttemptedThisCycle)
+            await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
+
+        // Verify outside reachability of the synced port. Skipped when the VPN is disconnected
+        // (VpnManager is null): the default-port fallback has no working tunnel for incoming
+        // connections, so a closed result would be expected noise.
+        if (config.VerifyPort && config.VpnManager is not null)
+            await VerifyPortAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
+        // With verification off nothing refreshes the exit-address state, so a mismatch found earlier would
+        // stay in the status file indefinitely. Not on a disconnected cycle: the exit-address reconnects
+        // cause those, and clearing there would restart their count on every reconnect.
+        else if (!config.VerifyPort)
+            ClearVpnExitMismatch();
+
+        SetSyncResult(status, true, "Sync cycle completed");
+    }
+
+    // The client's network-interface checks, in the order they repair: the re-point after a protocol
+    // switch, the name against the provider, then (qBittorrent) the stale token and the address under it.
+    // Returns whether qBittorrent was restarted after a re-point (see RepointToActiveAdapterAsync).
+    private async Task<bool> CheckClientInterfaceAsync(IManagedClient manager, string? currentInterfaceName, SyncConfig config, bool portWillChange, CancellationToken cancellationToken)
+    {
         // A protocol switch moves the tunnel to another of the provider's adapters; re-point qBittorrent
         // first, so the checks below read the adapter it is bound to from now on.
+        bool restartedForRepoint = false;
         if (manager is QBittorrentClient repointClient && config.VpnManager is not null)
-            currentInterfaceName = await RepointToActiveAdapterAsync(repointClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+            (currentInterfaceName, restartedForRepoint) = await RepointToActiveAdapterAsync(
+                repointClient, currentInterfaceName, config, portWillChange, cancellationToken).ConfigureAwait(false);
 
         // Warn if the client's network interface doesn't match the configured VPN provider
         if (config.VpnManager is not null && config.WarnOnInterfaceMismatch && manager.SupportsInterfaceMismatchWarning)
@@ -1353,38 +1398,7 @@ public sealed class PortSyncService
             await CheckInterfaceAddressAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
         }
 
-        await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
-
-        if (currentPort.Value == targetPort)
-        {
-            status[StatusKeys.ClientPort] = currentPort.Value;
-            LogManager.Instance.LogMessage($"{manager.ClientName} port {currentPort.Value} already matches the target port - no update needed", LogLevel.Info);
-        }
-        else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
-        {
-            // The write or the restart after it failed - skip the RestartOnDisconnect check. A failed write
-            // is retried next cycle; a failed restart is not, since the port then already matches.
-            return;
-        }
-
-        // Check connection status and restart if offline - skip if a restart was already performed
-        // by ApplyPortUpdateAsync (port changed + restart enabled) to avoid a redundant cycle.
-        bool restartAttemptedThisCycle = config.Restart && status[StatusKeys.PortChanged] is true;
-        if (config.RestartOnDisconnect && !restartAttemptedThisCycle)
-            await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
-
-        // Verify outside reachability of the synced port. Skipped when the VPN is disconnected
-        // (VpnManager is null): the default-port fallback has no working tunnel for incoming
-        // connections, so a closed result would be expected noise.
-        if (config.VerifyPort && config.VpnManager is not null)
-            await VerifyPortAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
-        // With verification off nothing refreshes the exit-address state, so a mismatch found earlier would
-        // stay in the status file indefinitely. Not on a disconnected cycle: the exit-address reconnects
-        // cause those, and clearing there would restart their count on every reconnect.
-        else if (!config.VerifyPort)
-            ClearVpnExitMismatch();
-
-        SetSyncResult(status, true, "Sync cycle completed");
+        return restartedForRepoint;
     }
 
     // Applies the port update, records it in the port history (with the cause: VPN-assigned, the
@@ -2392,18 +2406,20 @@ public sealed class PortSyncService
     // Restarting the VPN cannot fix this - the binding is in qBittorrent's configuration - so without it the
     // port reads closed and port-closed recovery restarts the VPN for nothing. One attempt per streak, like
     // the stale-token repair. Off, or not taken, CheckInterfaceMatch warns instead.
-    private async Task<string?> RepointToActiveAdapterAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    // Restarted is whether qBittorrent was restarted here (see RestartAfterRepointAsync), so the caller
+    // skips the connection-status restart a qBittorrent still starting up would otherwise get.
+    private async Task<(string? Name, bool Restarted)> RepointToActiveAdapterAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, bool portWillChange, CancellationToken cancellationToken)
     {
         if (config.VpnManager is not { } vpnManager || ActiveAdapterInsteadOf(vpnManager, interfaceName) is not { } active)
         {
             _interfaceRepointAttempted = false;
-            return interfaceName;
+            return (interfaceName, false);
         }
-        if (!config.FixInterfaceBinding) return interfaceName;
+        if (!config.FixInterfaceBinding) return (interfaceName, false);
         if (_interfaceRepointAttempted)
         {
             LogManager.Instance.LogDebug($"PortSyncService.RepointToActiveAdapterAsync: {client.ClientName} still bound to '{interfaceName}' after a re-point - not retrying until it is healthy");
-            return interfaceName;
+            return (interfaceName, false);
         }
 
         // Not in qBittorrent's list yet (it enumerates on request, but an adapter that has just come up can
@@ -2411,7 +2427,7 @@ public sealed class PortSyncService
         if (await client.GetInterfaceTokenAsync(active, cancellationToken).ConfigureAwait(false) is not { } token)
         {
             LogManager.Instance.LogDebug($"PortSyncService.RepointToActiveAdapterAsync: '{active}' is not in {client.ClientName}'s adapter list yet");
-            return interfaceName;
+            return (interfaceName, false);
         }
 
         _interfaceRepointAttempted = true;
@@ -2421,14 +2437,39 @@ public sealed class PortSyncService
         if (!await client.RepairInterfaceBindingAsync(active, token, cancellationToken).ConfigureAwait(false))
         {
             LogManager.Instance.LogMessage($"Could not re-point the {client.ClientName} network interface binding - select '{active}' in {client.ClientName}", LogLevel.Error);
-            return interfaceName;
+            return (interfaceName, false);
         }
 
         LogManager.Instance.LogMessage($"Re-pointed the {client.ClientName} network interface binding to '{active}'", LogLevel.Info);
         // The closed checks so far were taken on the dead adapter, and the first one after the write is
         // usually qBittorrent still opening its listeners, so the sequence starts again.
         RestartClosedPortSequence();
-        return active;
+        bool restarted = !portWillChange && await RestartAfterRepointAsync(client, config, cancellationToken).ConfigureAwait(false);
+        return (active, restarted);
+    }
+
+    // Restarts qBittorrent after a re-point, when "Restart after a port change" is on. The new binding takes
+    // for incoming connections at once, but DHT stays at 0 nodes until qBittorrent is restarted (seen live,
+    // and not the first time): incoming TCP works while DHT never recovers, and no VPN restart reaches it.
+    // Skipped when the port changes in the same cycle, whose own restart covers it; the binding survives
+    // the restart (measured: a re-point and a port-change restart in the same second kept it).
+    // Returns whether a restart was made. A failed one is logged and changes nothing else: the binding is
+    // written either way.
+    private static async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, SyncConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.Restart)
+        {
+            LogManager.Instance.LogMessage(
+                $"Restart {client.ClientName} if its DHT stays at 0 nodes - it does not bring DHT back after an interface change. " +
+                "Turn on \"Restart after a port change\" in Settings to have it done for you",
+                LogLevel.Warn);
+            return false;
+        }
+        LogManager.Instance.LogMessage($"Restarting {client.ClientName} so DHT starts on the new adapter", LogLevel.Info);
+        if (!await client.RestartAsync(cancellationToken).ConfigureAwait(false))
+            return false;
+        LogManager.Instance.LogMessage($"Restarted {client.ClientName}", LogLevel.Info);
+        return true;
     }
 
     // Detects a stale qBittorrent interface binding and re-points it at the adapter qBittorrent

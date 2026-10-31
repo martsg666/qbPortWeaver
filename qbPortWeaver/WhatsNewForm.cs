@@ -14,7 +14,9 @@ public partial class WhatsNewForm : Form
         "ProtonVPN and PIA use a different network adapter for each protocol, so after a switch the client " +
         "stayed bound to the old adapter, which is down, and the port stayed closed. qbPortWeaver now " +
         "re-points qBittorrent at the active adapter when \"Fix the network interface binding when it goes " +
-        "stale\" is on, and warns you otherwise, and for Nicotine+. Diagnostics reports it too.\n\n" +
+        "stale\" is on, and warns you otherwise, and for Nicotine+. Diagnostics reports it too. qBittorrent " +
+        "is then restarted when \"Restart after a port change\" is on, since without a restart its DHT stays " +
+        "at 0 nodes.\n\n" +
         "Changed: the VPN exit address check now covers PIA\n" +
         "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
         "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +

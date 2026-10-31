@@ -302,7 +302,7 @@ When enabled, the cycle compares the client's bound network interface (`current_
 
 ProtonVPN and PIA name their tunnel adapter after the protocol (`ProTUN`, `ProtonVPN` / `ProtonVPN TUN`; `wgpia0`, `PIA OpenVPN WinTUN Adapter`), and both names match the provider, so after a protocol switch a client still bound to the old adapter passes the name check above, and its token still resolves, so the stale-binding check below passes too - while the old adapter is down and the client listens on nothing. Seen live with PIA: OpenVPN to WireGuard left qBittorrent on the WinTUN adapter, the port read closed, and port-closed recovery would have restarted the VPN, which cannot help.
 
-`PortSyncService.ActiveAdapterInsteadOf` names the case: the bound adapter matches the provider, `IVpnManager.ActiveAdapterName` (the first up adapter carrying one of the provider's names; null for NAT-PMP and Static port, whose single adapter is picked in Settings) is a different adapter, and the bound one is not up. A bound adapter that is up is never overridden, and no adapter up at all is an ordinary disconnect, left alone. For qBittorrent with `fixInterfaceBinding` on, `RepointToActiveAdapterAsync` runs before the name check: it reads the active adapter's token from `networkInterfaceList`, writes the name and token through `RepairInterfaceBindingAsync` (Warn, then Info), restarts the closed-port sequence, and the rest of the cycle reads the new adapter. One attempt per streak, as for the stale token; an adapter not yet in qBittorrent's list spends no attempt. Otherwise - the setting off, the write not taken, or Nicotine+, whose binding the app cannot change - `CheckInterfaceMatch` warns once (`is bound to 'X', which is down - the active <provider> adapter is 'Y'`) with a balloon, and Diagnostics reports the same on the Interface binding row.
+`PortSyncService.ActiveAdapterInsteadOf` names the case: the bound adapter matches the provider, `IVpnManager.ActiveAdapterName` (the first up adapter carrying one of the provider's names; null for NAT-PMP and Static port, whose single adapter is picked in Settings) is a different adapter, and the bound one is not up. A bound adapter that is up is never overridden, and no adapter up at all is an ordinary disconnect, left alone. For qBittorrent with `fixInterfaceBinding` on, `RepointToActiveAdapterAsync` runs before the name check: it reads the active adapter's token from `networkInterfaceList`, writes the name and token through `RepairInterfaceBindingAsync` (Warn, then Info), restarts the closed-port sequence, and the rest of the cycle reads the new adapter. It then restarts qBittorrent (`RestartAfterRepointAsync`) when `restart` is on, unless the port changes in the same cycle, whose own restart covers it: the new binding takes for incoming TCP at once, but DHT stayed at 0 nodes until a restart (seen live after a PIA OpenVPN to WireGuard switch), and no VPN restart reaches it. The restart also skips that cycle's restart-on-disconnect check, which would read the restarting client as disconnected. With `restart` off it logs a Warn saying to restart qBittorrent instead. One attempt per streak, as for the stale token; an adapter not yet in qBittorrent's list spends no attempt. Otherwise - the setting off, the write not taken, or Nicotine+, whose binding the app cannot change - `CheckInterfaceMatch` warns once (`is bound to 'X', which is down - the active <provider> adapter is 'Y'`) with a balloon, and Diagnostics reports the same on the Interface binding row.
 
 ### Stale Interface Binding *(qBittorrent only)*
 
@@ -784,19 +784,21 @@ RunAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IManagedClient.GetPreferencesAsync
-         ├─ RepointToActiveAdapterAsync (qBittorrent; ProtonVPN and PIA after a protocol switch)
-         │   ├─ ActiveAdapterInsteadOf
-         │   └─ QBittorrentClient.GetInterfaceTokenAsync, RepairInterfaceBindingAsync
-         ├─ CheckInterfaceMatch (qBittorrent and Nicotine+; also warns via ActiveAdapterInsteadOf)
-         ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
-         │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
-         │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
-         │       -> returns whether the token can be trusted to read an address under
-         ├─ CheckInterfaceAddressAsync (qBittorrent only; ONLY if the line above returned true)
-         │   ├─ QBittorrentClient.GetInterfaceAddressStateAsync (pinned address + live addresses)
-         │   ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
-         │   │   └─ QBittorrentClient.ForceInterfaceRebindAsync
-         │   └─ QBittorrentClient.TryGetConnectionStatusAsync (only on an address change; Debug on failure)
+         ├─ CheckClientInterfaceAsync
+         │   ├─ RepointToActiveAdapterAsync (qBittorrent; ProtonVPN and PIA after a protocol switch)
+         │   │   ├─ ActiveAdapterInsteadOf
+         │   │   ├─ QBittorrentClient.GetInterfaceTokenAsync, RepairInterfaceBindingAsync
+         │   │   └─ RestartAfterRepointAsync (when the port does not change this cycle)
+         │   ├─ CheckInterfaceMatch (qBittorrent and Nicotine+; also warns via ActiveAdapterInsteadOf)
+         │   ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
+         │   │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
+         │   │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
+         │   │       -> returns whether the token can be trusted to read an address under
+         │   └─ CheckInterfaceAddressAsync (qBittorrent only; ONLY if the line above returned true)
+         │       ├─ QBittorrentClient.GetInterfaceAddressStateAsync (pinned address + live addresses)
+         │       ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
+         │       │   └─ QBittorrentClient.ForceInterfaceRebindAsync
+         │       └─ QBittorrentClient.TryGetConnectionStatusAsync (only on an address change; Debug on failure)
          ├─ CheckClientSettingsConflictsAsync (every ConflictCheckEveryNCycles = 5; transition-logged)
          │   └─ IManagedClient.GetConflictingSettingsAsync
          ├─ UpdatePortAndNotifyAsync (when ports differ)

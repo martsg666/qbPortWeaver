@@ -166,6 +166,11 @@ internal static partial class MediaImporter
     /// lands beside a different file that holds the video's name.</returns>
     internal static bool AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
     {
+        // Windows' normal path clean-up up front (trailing dots and spaces trimmed from each name, '/' read as
+        // '\'). The hardlink goes through the \\?\ prefix (ToExtendedPath), which skips that clean-up, while
+        // creating the folder and the copy fallback do not: a show folder ending in "." was created without
+        // the dot, the hardlink to the dotted path then failed, and every such import became a full copy.
+        destinationPath = Path.GetFullPath(destinationPath);
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
             return true;
 

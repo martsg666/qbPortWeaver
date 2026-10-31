@@ -157,7 +157,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // deliberately not propagated. A client whose process is up but whose Web UI is still warming
     // still returns true, because the alternative - reporting a start failure for a slow-but-healthy
     // client - is the worse error, and the first real request produces a far better-targeted message
-    // than this probe could. A probe timeout is recorded at Debug and nowhere else.
+    // than this probe could. A probe timeout is logged as a Warn (see WaitForApiReadyAsync).
     protected async Task<bool> LaunchAndWaitAsync(int initialDelayMs, CancellationToken cancellationToken)
     {
         Process.Start(CreateStartInfo())?.Dispose();

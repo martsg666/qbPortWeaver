@@ -233,15 +233,6 @@ internal sealed partial class HelperPipeServer(ILogger<HelperPipeServer> logger)
         }
     }
 
-    // Impersonates the pipe client to validate the session token and read what the helper needs from
-    // the caller's HKCU hive: the log file path, and whether debug logging is switched on. Returns
-    // false if the token is invalid, impersonation fails, or LocalAppData cannot be read. Using the
-    // caller's own registry avoids trusting any caller-supplied path.
-    //
-    // The debug flag is read here rather than sent over the pipe because this is the only moment the
-    // SYSTEM service can see a per-user HKCU value: the impersonation ends with this method, well
-    // before the action runs. Reading it now and handing it to the logger lets the helper honour the
-    // same switch the main app does, without widening the pipe message format.
     // Opens the HKCU hive of the user this thread impersonates (RegOpenCurrentUser), or null when it cannot
     // be opened. Call only inside RunAsClient. The returned key owns the handle and closes it when disposed.
     private RegistryKey? OpenImpersonatedUserHive()
@@ -256,6 +247,15 @@ internal sealed partial class HelperPipeServer(ILogger<HelperPipeServer> logger)
         return RegistryKey.FromHandle(handle);
     }
 
+    // Impersonates the pipe client to validate the session token and read what the helper needs from
+    // the caller's HKCU hive: the log file path, and whether debug logging is switched on. Returns
+    // false if the token is invalid, impersonation fails, or LocalAppData cannot be read. Using the
+    // caller's own registry avoids trusting any caller-supplied path.
+    //
+    // The debug flag is read here rather than sent over the pipe because this is the only moment the
+    // SYSTEM service can see a per-user HKCU value: the impersonation ends with this method, well
+    // before the action runs. Reading it now and handing it to the logger lets the helper honour the
+    // same switch the main app does, without widening the pipe message format.
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath, out bool debugMode)
     {
         logFilePath = string.Empty;

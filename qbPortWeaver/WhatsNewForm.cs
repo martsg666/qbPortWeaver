@@ -39,6 +39,13 @@ public partial class WhatsNewForm : Form
         "If qbPortWeaver exited or updated while copying a file into the library, a partial file was left " +
         "under the final name and the real one was then never imported. Copies now go to a temporary " +
         "name first and take the final name only once complete.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "Auto-recovery now works for every Windows user on the PC, not only the first one the helper service " +
+        "served. Clear Logs says so when a log file could not be deleted, instead of reporting it cleared. A " +
+        "problem updating the Windows startup entry now shows on the tray. Transmission running as a service " +
+        "is given time to answer after a restart, so the next sync does not fail. A hardlink into a folder " +
+        "whose name ends in a dot no longer falls back to a full copy, and a Proposed name made only of dots " +
+        "is ignored instead of importing outside the library.\n\n" +
         "Changed: a client that does not answer after a restart is reported\n" +
         "When qbPortWeaver starts or restarts your client and its Web UI does not answer within 30 seconds, " +
         "the log now says so with a warning, instead of only showing the connection errors that follow.\n\n" +

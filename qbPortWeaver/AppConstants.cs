@@ -26,11 +26,6 @@ public static class AppConstants
     // Debounce window for network-change triggered re-syncs. NetworkAddressChanged fires in
     // bursts when an adapter comes up, so a single reconnect is coalesced into one wake.
     public const int ResyncDebounceMs = 2500;
-    // How long the VPN must have been connected before qbPortWeaver restarts the client. A client started
-    // in the first second of a new tunnel found no working network (no external address, its own HTTPS
-    // requests failing), and qBittorrent's DHT then stayed at 0 nodes for good; one restarted a minute
-    // into the connection came up normally. See PortSyncService.WaitForVpnSettleAsync.
-    public const int VpnSettleBeforeClientRestartMs = 15 * MillisecondsPerSecond;
 
     // Ports
     // Usable TCP/UDP listening port range. A provider reporting anything outside it is reporting

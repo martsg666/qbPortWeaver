@@ -278,8 +278,7 @@ All client communication goes through the `IManagedClient` interface, with imple
    core.set_config                                                        [Deluge]
    POST /v1/port                                                          [Nicotine+]
 
-3. (optional) Restart client process or service (if restart enabled), after WaitForVpnSettleAsync:
-   within VpnSettleBeforeClientRestartMs (15 s) of the VPN coming up, it waits out the rest first
+3. (optional) Restart client process or service (if restart enabled)
 4. Record the change in the port history file (whenever the port was written, even if the restart
    failed - see Port History under Status Output), and (optional) show a tray balloon tip if
    NotifyOnPortUpdate is enabled (raises PortUpdated event)
@@ -294,10 +293,6 @@ All client communication goes through the `IManagedClient` interface, with imple
 ```
 
 > The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only when the port changed this cycle (including when the client restart after the write failed, which the status file reports) - so a script that reads the status file sees this cycle's result rather than the previous one.
-
-### VPN Settle Before a Client Restart
-
-The first connected cycle often runs within a second of the tunnel appearing, because a network change wakes the loop (`ResyncDebounceMs`). A client restarted then finds no working network. Measured after a PIA to ProtonVPN switch: qBittorrent, restarted one second after ProtonVPN was first seen connected, logged no external address, its own HTTPS requests failed with a network error, and its DHT stayed at 0 nodes for over two minutes (until it was restarted again), while restarts a minute into a connection detected the external address at once. So every restart qbPortWeaver makes of the client (the port-change restart in `ApplyPortUpdateAsync` and the re-point restart in `RestartAfterRepointAsync`) first calls `WaitForVpnSettleAsync`: `HandleVpnDisconnectedAsync` marks the VPN as seen down, the next `HandleVpnConnectedAsync` stamps the time it was first seen connected, and a restart within `AppConstants.VpnSettleBeforeClientRestartMs` (15 s) of that waits out the rest, with an Info line saying so. No wait when the VPN has been up longer, or was already up when the app started (no down cycle seen). The restart-on-disconnect restart does not wait: it reacts to a client already running on the connection.
 
 ### Interface Mismatch Warning *(qBittorrent and Nicotine+)*
 
@@ -793,7 +788,7 @@ RunAsync
          │   ├─ RepointToActiveAdapterAsync (qBittorrent; after a protocol or provider switch)
          │   │   ├─ ActiveAdapterInsteadOf
          │   │   ├─ QBittorrentClient.GetInterfaceTokenAsync, RepairInterfaceBindingAsync
-         │   │   └─ RestartAfterRepointAsync (when the port does not change this cycle; WaitForVpnSettleAsync first)
+         │   │   └─ RestartAfterRepointAsync (when the port does not change this cycle)
          │   ├─ CheckInterfaceMatch (qBittorrent and Nicotine+; also warns via ActiveAdapterInsteadOf)
          │   ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
@@ -809,7 +804,6 @@ RunAsync
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync
-         │   │   ├─ WaitForVpnSettleAsync (within 15 s of the VPN coming up)
          │   │   └─ IManagedClient.RestartAsync
          │   ├─ PortHistoryManager.Append (whenever the port was written, even if the restart failed)
          │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)

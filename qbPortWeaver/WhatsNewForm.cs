@@ -17,10 +17,6 @@ public partial class WhatsNewForm : Form
         "a restart its DHT stays at 0 nodes. This is part of the qBittorrent setting \"Fix the network interface " +
         "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
         "adapter changes\". With it off, and for Nicotine+, you are warned instead. Diagnostics reports it too.\n\n" +
-        "Fixed: the client is no longer restarted before a new VPN connection works\n" +
-        "After a VPN connected, qbPortWeaver could restart the client within a second, before the tunnel " +
-        "carried any traffic, and qBittorrent's DHT then stayed at 0 nodes until you restarted it yourself. " +
-        "qbPortWeaver now waits until the VPN has been connected for 15 seconds before restarting the client.\n\n" +
         "Changed: the VPN exit address check now covers PIA\n" +
         "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
         "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +

@@ -87,11 +87,6 @@ public sealed class PortSyncService
     // True once qBittorrent has been re-pointed from a down adapter of the provider to its active one (see
     // RepointToActiveAdapterAsync) for the current streak; same one-attempt rule as the flag above.
     private bool _interfaceRepointAttempted;
-    // When the VPN was first seen connected after a cycle that found it down (Environment.TickCount64),
-    // for WaitForVpnSettleAsync; null while it is down and when it was already up at app start.
-    // _vpnSeenDown is what makes the next connected cycle stamp it.
-    private long? _vpnConnectedSinceTick;
-    private bool _vpnSeenDown;
     // Addresses the bound adapter carried on the previous cycle, or null before the first successful
     // read. Lives here rather than on the client because the client is constructed and disposed once
     // per cycle (see the `using var manager` in RunCoreAsync), so it cannot remember anything, and the
@@ -858,9 +853,6 @@ public sealed class PortSyncService
     // (which may trigger recovery) and either fall back to the configured default port or skip the cycle.
     private async Task<TargetPortResult> HandleVpnDisconnectedAsync(IVpnManager vpnManager, AppConfig cfg, int defaultPort, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        _vpnSeenDown = true;
-        _vpnConnectedSinceTick = null;
-
         // During the startup grace window, a not-yet-connected VPN is expected. Hold quietly and re-check
         // soon rather than registering a failure or applying the default-port fallback.
         if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
@@ -919,11 +911,6 @@ public sealed class PortSyncService
         // failures also accumulate toward the auto-recovery threshold.
         status[StatusKeys.VpnConnected] = true;
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
-        if (_vpnSeenDown)
-        {
-            _vpnSeenDown = false;
-            _vpnConnectedSinceTick = Environment.TickCount64;
-        }
 
         int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
 
@@ -2473,33 +2460,13 @@ public sealed class PortSyncService
     // binding survives the restart (measured: a re-point and a port-change restart in the same second kept it).
     // Returns whether a restart was made. A failed one is logged and changes nothing else: the binding is
     // written either way.
-    private async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, CancellationToken cancellationToken)
+    private static async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, CancellationToken cancellationToken)
     {
-        await WaitForVpnSettleAsync(client.ClientName, cancellationToken).ConfigureAwait(false);
         LogManager.Instance.LogMessage($"Restarting {client.ClientName} so DHT starts on the new adapter", LogLevel.Info);
         if (!await client.RestartAsync(cancellationToken).ConfigureAwait(false))
             return false;
         LogManager.Instance.LogMessage($"Restarted {client.ClientName}", LogLevel.Info);
         return true;
-    }
-
-    // Waits, before qbPortWeaver restarts the client, until the VPN has been connected for
-    // AppConstants.VpnSettleBeforeClientRestartMs. The first connected cycle often runs within a second of
-    // the tunnel appearing (a network change wakes the loop), and a client started then finds no working
-    // network: measured with ProtonVPN, qBittorrent detected no external address, its own HTTPS requests
-    // failed, and its DHT stayed at 0 nodes until it was restarted again by hand. No wait when the VPN has
-    // been up longer, or was already up when the app started. Bounded by the constant, so a cycle is
-    // delayed at most that long once per reconnect.
-    private async Task WaitForVpnSettleAsync(string clientName, CancellationToken cancellationToken)
-    {
-        if (_vpnConnectedSinceTick is not long since) return;
-        long remainingMs = AppConstants.VpnSettleBeforeClientRestartMs - (Environment.TickCount64 - since);
-        if (remainingMs <= 0) return;
-        int seconds = (int)Math.Ceiling(remainingMs / (double)AppConstants.MillisecondsPerSecond);
-        LogManager.Instance.LogMessage(
-            $"Waiting {TextFormat.Pluralize(seconds, "second")} for the VPN connection to settle before restarting {clientName}",
-            LogLevel.Info);
-        await Task.Delay(TimeSpan.FromMilliseconds(remainingMs), cancellationToken).ConfigureAwait(false);
     }
 
     // Detects a stale qBittorrent interface binding and re-points it at the adapter qBittorrent
@@ -2776,7 +2743,7 @@ public sealed class PortSyncService
 
     // Sets the listening port and optionally restarts the client. Returns false if any step fails.
     // The post-update command is launched later (in RunAsync's finally, after the status file write).
-    private async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private static async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"{manager.ClientName} port does not match the target port - updating to {targetPort}", LogLevel.Info);
         if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
@@ -2791,7 +2758,6 @@ public sealed class PortSyncService
 
         if (config.Restart)
         {
-            await WaitForVpnSettleAsync(manager.ClientName, cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage($"Attempting to restart {manager.ClientName}", LogLevel.Info);
             if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
             {

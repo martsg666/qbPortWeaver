@@ -222,9 +222,13 @@ public static class MediaManagerService
             ? classified.Sum(c => c.Items.MovieFiles.Length) : 0;
         int episodesWithoutLibrary = string.IsNullOrWhiteSpace(tvShowsLibraryPath)
             ? classified.Sum(c => c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length) : 0;
-        if (moviesWithoutLibrary + episodesWithoutLibrary > 0)
+        // Only the types actually skipped are named: "0 movie files and 903 TV episode files" read oddly.
+        var skippedParts = new List<string>(2);
+        if (moviesWithoutLibrary > 0) skippedParts.Add(TextFormat.Pluralize(moviesWithoutLibrary, "movie file"));
+        if (episodesWithoutLibrary > 0) skippedParts.Add(TextFormat.Pluralize(episodesWithoutLibrary, "TV episode file"));
+        if (skippedParts.Count > 0)
             LogManager.Instance.LogMessage(
-                $"Scan skipped {TextFormat.Pluralize(moviesWithoutLibrary, "movie file")} and {TextFormat.Pluralize(episodesWithoutLibrary, "TV episode file")} with no library path set for their type",
+                $"Scan skipped {string.Join(" and ", skippedParts)} with no library path set for their type",
                 LogLevel.Info, Subsystem.MediaManager);
         return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable, moviesWithoutLibrary, episodesWithoutLibrary);
     }

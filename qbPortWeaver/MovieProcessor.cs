@@ -164,7 +164,10 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         try
         {
             var paths = MediaImporter.InvokeWithSmbRetry(folder, () => Directory.GetFiles(folder));
-            foreach (var path in paths.Select(WithoutUnfinishedExtension).Where(FileNameParser.IsVideoFile))
+            // Sample clips are skipped here as in EnumerateSourceFolder: "Title.2001.sample.mkv" parses to the
+            // parts' title and year with no part number, which would make the group read as not multi-part.
+            foreach (var path in paths.Select(WithoutUnfinishedExtension)
+                         .Where(p => FileNameParser.IsVideoFile(p) && !FileNameParser.IsSampleFile(p)))
             {
                 var fileName = Path.GetFileName(path);
                 var (title, year) = FileNameParser.ParseTitleYear(fileName);

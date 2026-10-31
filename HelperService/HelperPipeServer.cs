@@ -185,7 +185,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 break;
 
             default:
-                helperLogger.LogMessage($"Rejected unknown action '{action}'", LogLevel.Warn);
+                // Error, not Warn: the result line then carries error=1, which both recovery paths in the
+                // tray app read as a failure. At Warn the restart path took it for a completed restart and
+                // relaunched the VPN client app for a recovery that never ran. This is how an older helper
+                // "rejects loudly" an action added later (see HelperProtocol); the rejected sentinel is not
+                // used because it means the caller failed verification.
+                helperLogger.LogMessage($"Rejected unknown action '{action}'", LogLevel.Error);
                 break;
         }
 

@@ -10,13 +10,14 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.1\n\n" +
-        "Fixed: switching VPN protocol or provider no longer leaves the client on the old adapter\n" +
+        "Fixed: switching VPN protocol or provider no longer leaves qBittorrent on the old adapter\n" +
         "ProtonVPN and PIA use a different network adapter for each protocol, and each provider has its own, " +
         "so after a switch the client stayed bound to the old adapter, which is down, and the port stayed " +
         "closed. qbPortWeaver now re-points qBittorrent at the active adapter and restarts it, since without " +
         "a restart its DHT may not recover. This is part of the qBittorrent setting \"Fix the network interface " +
         "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
-        "adapter changes\". With it off, and for Nicotine+, you are warned instead. Diagnostics reports it too.\n\n" +
+        "adapter changes\". With it off you are warned instead, as you are for Nicotine+, when the interface " +
+        "warning is on. Diagnostics reports it too.\n\n" +
         "Fixed: Media Manager no longer imports sample clips\n" +
         "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
         "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +

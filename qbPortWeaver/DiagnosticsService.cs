@@ -490,7 +490,7 @@ public static class DiagnosticsService
     private static string ActiveAdapterHint(IManagedClient client, string activeAdapter) =>
         client is QBittorrentClient
             ? $"Select '{activeAdapter}' as the network interface in {client.ClientName}. With \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
-              "on in Settings, the next sync does it for you."
+              "on in Settings, the sync re-points it automatically; if this row stays, select it by hand."
             : $"Select '{activeAdapter}' as the network interface in {client.ClientName}.";
 
     private static async Task AddInterfaceResultAsync(List<DiagnosticResult> results, IManagedClient client,

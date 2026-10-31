@@ -788,7 +788,7 @@ RunAsync
          │   ├─ RepointToActiveAdapterAsync (qBittorrent; after a protocol or provider switch)
          │   │   ├─ ActiveAdapterInsteadOf
          │   │   ├─ QBittorrentClient.GetInterfaceTokenAsync, RepairInterfaceBindingAsync
-         │   │   └─ RestartAfterRepointAsync (when the port does not change this cycle)
+         │   │   └─ RestartAfterRepointAsync (unless the port changes this cycle with the port-change restart on)
          │   ├─ CheckInterfaceMatch (qBittorrent and Nicotine+; also warns via ActiveAdapterInsteadOf)
          │   ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)

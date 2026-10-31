@@ -2467,6 +2467,18 @@ public sealed class PortSyncService
     // written either way.
     private static async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, CancellationToken cancellationToken)
     {
+        // This restart follows fixInterfaceBinding, not the port-change restart setting, so it can be the first
+        // restart a user's setup ever sees. RestartAsync closes the client before launching ExePath; with a path
+        // that does not exist (a portable install with the default path left in Settings) the client would be
+        // closed and not come back. Re-pointed but not restarted is the better outcome, with the reason given.
+        if (!client.ExecutableExists)
+        {
+            LogManager.Instance.LogMessage(
+                $"{client.ClientName} was re-pointed but not restarted: its Executable path in Settings does not exist. " +
+                $"Restart {client.ClientName} yourself so DHT starts on the new adapter",
+                LogLevel.Warn);
+            return false;
+        }
         LogManager.Instance.LogMessage($"Restarting {client.ClientName} so DHT starts on the new adapter", LogLevel.Info);
         if (!await client.RestartAsync(cancellationToken).ConfigureAwait(false))
             return false;

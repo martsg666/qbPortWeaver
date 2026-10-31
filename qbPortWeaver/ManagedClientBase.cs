@@ -24,6 +24,13 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected readonly string Url;
     protected readonly string ProcessName;
     protected readonly string ExePath;
+
+    /// <summary>
+    /// Whether the configured executable exists, so a caller can avoid closing a client it could not start
+    /// again (RestartAsync closes the running process before it launches this path).
+    /// </summary>
+    internal bool ExecutableExists => !string.IsNullOrWhiteSpace(ExePath) && File.Exists(ExePath);
+
     protected readonly HttpClient HttpClient;
     // Not volatile: IsAuthenticated is only accessed by one sync cycle at a time, never concurrently.
     // The awaits run with ConfigureAwait(false), so successive accesses can land on different pool

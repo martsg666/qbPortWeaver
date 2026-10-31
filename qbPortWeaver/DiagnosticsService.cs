@@ -489,7 +489,7 @@ public static class DiagnosticsService
     // binding is re-pointed by the sync loop; Diagnostics never writes, so it says what the next sync does.
     private static string ActiveAdapterHint(IManagedClient client, string activeAdapter) =>
         client is QBittorrentClient
-            ? $"Select '{activeAdapter}' as the network interface in {client.ClientName}. With \"Fix the network interface binding when it goes stale\" " +
+            ? $"Select '{activeAdapter}' as the network interface in {client.ClientName}. With \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
               "on in Settings, the next sync does it for you."
             : $"Select '{activeAdapter}' as the network interface in {client.ClientName}.";
 
@@ -508,7 +508,7 @@ public static class DiagnosticsService
             {
                 results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
                     $"Bound to '{interfaceName}' by a stale identifier - {client.ClientName} is not listening on that adapter",
-                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
                     "in Settings. Restarting the client does not clear it, because the value is stored in its configuration."));
                 return;
             }
@@ -589,7 +589,7 @@ public static class DiagnosticsService
 
         return new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
             $"{detail} - {client.ClientName} cannot accept incoming connections",
-            $"Correct the bind address in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+            $"Correct the bind address in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" " +
             "in Settings, which re-points it at a live address automatically.");
     }
 

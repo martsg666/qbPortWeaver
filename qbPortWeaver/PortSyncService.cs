@@ -2448,27 +2448,20 @@ public sealed class PortSyncService
         // The closed checks so far were taken on the dead adapter, and the first one after the write is
         // usually qBittorrent still opening its listeners, so the sequence starts again.
         RestartClosedPortSequence();
-        bool restarted = !portWillChange && await RestartAfterRepointAsync(client, config, cancellationToken).ConfigureAwait(false);
+        bool restarted = !(portWillChange && config.Restart) && await RestartAfterRepointAsync(client, cancellationToken).ConfigureAwait(false);
         return (active, restarted);
     }
 
-    // Restarts qBittorrent after a re-point, when "Restart after a port change" is on. The new binding takes
-    // for incoming connections at once, but DHT stays at 0 nodes until qBittorrent is restarted (seen live,
-    // and not the first time): incoming TCP works while DHT never recovers, and no VPN restart reaches it.
-    // Skipped when the port changes in the same cycle, whose own restart covers it; the binding survives
-    // the restart (measured: a re-point and a port-change restart in the same second kept it).
+    // Restarts qBittorrent after a re-point, as the last step of it: the new binding takes for incoming
+    // connections at once, but DHT stays at 0 nodes until qBittorrent is restarted (seen live, and not the
+    // first time): incoming TCP works while DHT never recovers, and no VPN restart reaches it. So it is part
+    // of fixInterfaceBinding, which gates the re-point, not of the port-change restart setting.
+    // Skipped when the port changes in the same cycle with that restart on, whose own restart covers it; the
+    // binding survives the restart (measured: a re-point and a port-change restart in the same second kept it).
     // Returns whether a restart was made. A failed one is logged and changes nothing else: the binding is
     // written either way.
-    private static async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, SyncConfig config, CancellationToken cancellationToken)
+    private static async Task<bool> RestartAfterRepointAsync(QBittorrentClient client, CancellationToken cancellationToken)
     {
-        if (!config.Restart)
-        {
-            LogManager.Instance.LogMessage(
-                $"Restart {client.ClientName} if its DHT stays at 0 nodes - it does not bring DHT back after an interface change. " +
-                "Turn on \"Restart after a port change\" in Settings to have it done for you",
-                LogLevel.Warn);
-            return false;
-        }
         LogManager.Instance.LogMessage($"Restarting {client.ClientName} so DHT starts on the new adapter", LogLevel.Info);
         if (!await client.RestartAsync(cancellationToken).ConfigureAwait(false))
             return false;
@@ -2531,7 +2524,7 @@ public sealed class PortSyncService
                 // gates on _interfaceBindingRepairAttempted for the same reason: a stale binding lives
                 // in the client's own configuration and persists until the user acts.
                 LogManager.Instance.LogStateChange(BindingStaleStateKey,
-                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
+                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" in Settings",
                     LogLevel.Warn);
                 _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
                     $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
@@ -2677,8 +2670,8 @@ public sealed class PortSyncService
     {
         if (!config.RebindReachable)
             return $"{clientName} will not be rebound if that port stops answering - that needs the " +
-                   "VPN connected, and the port check, port-closed recovery and \"Fix the network " +
-                   "interface binding when it goes stale\" all switched on";
+                   "VPN connected, and the port check, port-closed recovery and \"Fix the interface " +
+                   "binding when it goes stale or the VPN adapter changes\" all switched on";
         if (!_portClosedRecoveryArmed)
             return $"{clientName} will not be rebound while recovery for this outage has already run - " +
                    "that is possible again once a check reports the port open";
@@ -2704,7 +2697,7 @@ public sealed class PortSyncService
             // the next cycle rather than write something that is about to be wrong again.
             string remedy = replacement is null
                 ? "waiting for the adapter to report a usable address"
-                : $"correct it in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings";
+                : $"correct it in {client.ClientName}, or turn on \"Fix the interface binding when it goes stale or the VPN adapter changes\" in Settings";
             LogManager.Instance.LogStateChange(BindingAddressStateKey, $"{detail} - {remedy}", LogLevel.Warn);
             return;
         }

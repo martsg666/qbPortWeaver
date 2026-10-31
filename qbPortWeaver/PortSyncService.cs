@@ -1301,6 +1301,7 @@ public sealed class PortSyncService
         public string? GetRecoveryTarget() => Recovery.Target;
         public string GetRecoveryAction() => Recovery.Action;
         public bool IsAdapterMatch(string interfaceName) => VpnRegistryConfig.AdapterNamesMatchExactly(adapterName, interfaceName);
+        public string? ActiveAdapterName => VpnAdapter.IsUpQuiet(adapterName) ? adapterName : null;
     }
 
     // Creates the active IManagedClient via its ClientRegistry factory from the config block
@@ -2354,20 +2355,22 @@ public sealed class PortSyncService
                 $"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
             balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
         }
+        else if (ActiveAdapterInsteadOf(vpnManager, interfaceName) is { } activeAdapter)
+        {
+            // Bound to a down adapter while the VPN's is up (a protocol or provider switch): the client
+            // listens on nothing. Ahead of the mismatch case, which a previous provider's adapter also
+            // meets, because this one names the adapter to pick. qBittorrent reaches here only when the
+            // re-point is off or did not take.
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} is bound to '{interfaceName}', which is down - the active VPN adapter is '{activeAdapter}'. " +
+                $"Select '{activeAdapter}' as the network interface in {clientName}", LogLevel.Warn);
+            balloonMessage = $"{clientName} is bound to '{interfaceName}', which is down - select '{activeAdapter}'.";
+        }
         else if (!vpnManager.IsAdapterMatch(interfaceName))
         {
             LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
                 $"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
             balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
-        }
-        else if (ActiveAdapterInsteadOf(vpnManager, interfaceName) is { } activeAdapter)
-        {
-            // A provider adapter, but not the one carrying the tunnel: the client listens on nothing.
-            // qBittorrent reaches here only when the re-point is off or did not take.
-            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
-                $"{clientName} is bound to '{interfaceName}', which is down - the active {vpnManager.ProviderName} adapter is '{activeAdapter}'. " +
-                $"Select '{activeAdapter}' as the network interface in {clientName}", LogLevel.Warn);
-            balloonMessage = $"{clientName} is bound to '{interfaceName}', which is down - select '{activeAdapter}'.";
         }
         else
         {
@@ -2385,20 +2388,21 @@ public sealed class PortSyncService
         _lastInterfaceMismatchMessage = RaiseInterfaceBalloonIfNew(balloonMessage, _lastInterfaceMismatchMessage);
     }
 
-    // The provider's active adapter when the client is bound to another adapter of the same provider that
-    // is down - what a protocol switch leaves behind, since ProtonVPN and PIA name the adapter after the
-    // protocol. Null otherwise: not a provider adapter (CheckInterfaceMatch's mismatch case), no adapter
-    // up (an ordinary disconnect, left alone like CheckInterfaceBindingAsync leaves an absent one), or the
-    // bound adapter is itself up, so a choice the user made between two live adapters is never overridden.
-    // Shared by the re-point, the warning and Diagnostics, so the three cannot disagree.
+    // The provider's active adapter when the client is bound to a different adapter that is down - what a
+    // protocol switch leaves behind (ProtonVPN and PIA name the adapter after the protocol), and what a
+    // switch of provider leaves behind (the previous provider's adapter). Null otherwise: bound to all
+    // interfaces (CheckInterfaceMatch's leak case), no provider adapter up (an ordinary disconnect, left
+    // alone like CheckInterfaceBindingAsync leaves an absent one), or the bound adapter is itself up, so a
+    // binding the user chose to a live adapter is never overridden - a live adapter of the wrong provider
+    // stays CheckInterfaceMatch's mismatch warning. Moving a client off a dead adapter onto the VPN's
+    // live one cannot open a leak. Shared by the re-point, the warning and Diagnostics, so the three
+    // cannot disagree.
     internal static string? ActiveAdapterInsteadOf(IVpnManager vpnManager, string? interfaceName)
     {
-        if (string.IsNullOrEmpty(interfaceName) || !vpnManager.IsAdapterMatch(interfaceName)) return null;
+        if (string.IsNullOrEmpty(interfaceName)) return null;
         string? active = vpnManager.ActiveAdapterName;
         if (active is null || string.Equals(active, interfaceName, StringComparison.OrdinalIgnoreCase)) return null;
-        bool boundIsUp = VpnAdapter.GetActiveInterfaces()
-            .Exists(nic => nic.Name.Equals(interfaceName, StringComparison.OrdinalIgnoreCase));
-        return boundIsUp ? null : active;
+        return VpnAdapter.IsUpAnyType(interfaceName) ? null : active;
     }
 
     // Re-points qBittorrent from a down adapter of the provider to the active one (see ActiveAdapterInsteadOf)
@@ -2432,7 +2436,7 @@ public sealed class PortSyncService
 
         _interfaceRepointAttempted = true;
         LogManager.Instance.LogMessage(
-            $"{client.ClientName} is bound to '{interfaceName}', which is down - re-pointing it at '{active}', the active {vpnManager.ProviderName} adapter",
+            $"{client.ClientName} is bound to '{interfaceName}', which is down - re-pointing it at '{active}', the active VPN adapter",
             LogLevel.Warn);
         if (!await client.RepairInterfaceBindingAsync(active, token, cancellationToken).ConfigureAwait(false))
         {

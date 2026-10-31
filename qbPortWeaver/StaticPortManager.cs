@@ -45,6 +45,10 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     public bool IsAdapterMatch(string interfaceName)
         => VpnRegistryConfig.AdapterNamesMatchExactly(adapterName, interfaceName);
 
+    /// <inheritdoc />
+    // The adapter chosen in Settings, while it is up.
+    public string? ActiveAdapterName => VpnAdapter.IsUpQuiet(adapterName) ? adapterName : null;
+
     /// <summary>
     /// Returns the names of the network adapters that are currently up, sorted, for the Settings
     /// adapter list. Unlike NAT-PMP discovery nothing is probed: any adapter can carry a static

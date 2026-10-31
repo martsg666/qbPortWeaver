@@ -107,12 +107,13 @@ public interface IVpnManager
     bool IsProtonVpnOverOpenVpn => false;
 
     /// <summary>
-    /// The provider's tunnel adapter that is up right now, for a provider with more than one: ProtonVPN and
-    /// PIA name their adapter after the protocol, so switching protocol moves the tunnel to another adapter
-    /// while a client stays bound to the old one. Read live on each call. <see langword="null"/> when none
-    /// is up, and for NAT-PMP and Static port, whose single adapter is picked in Settings.
+    /// The provider's tunnel adapter that is up right now, so a client left on a down adapter can be moved
+    /// to it: ProtonVPN and PIA name their adapter after the protocol, so a protocol switch moves the tunnel
+    /// to another adapter, and a provider switch moves it to another provider's. ProtonVPN and PIA report
+    /// the first up adapter carrying one of their names; NAT-PMP and Static port the adapter picked in
+    /// Settings while it is up. Read live on each call; <see langword="null"/> when none is up.
     /// </summary>
-    string? ActiveAdapterName => null;
+    string? ActiveAdapterName { get; }
 
     /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or

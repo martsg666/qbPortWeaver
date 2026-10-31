@@ -535,7 +535,7 @@ public static class DiagnosticsService
                 "Bind the client's network interface to your VPN adapter in its settings."));
         else if (PortSyncService.ActiveAdapterInsteadOf(vpn, interfaceName) is { } activeAdapter)
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn,
-                $"Bound to '{interfaceName}', which is down - the active {vpn.ProviderName} adapter is '{activeAdapter}'",
+                $"Bound to '{interfaceName}', which is down - the active VPN adapter is '{activeAdapter}'",
                 ActiveAdapterHint(client, activeAdapter)));
         else if (vpn.IsAdapterMatch(interfaceName))
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Pass, $"Bound to '{interfaceName}'"));

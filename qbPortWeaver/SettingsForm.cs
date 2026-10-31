@@ -149,24 +149,28 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(btnBrowseQBittorrentExePath, "Browse for the qBittorrent executable");
         toolTip.SetToolTip(btnTestQBittorrent, "Test the connection to qBittorrent using the URL and credentials above");
         toolTip.SetToolTip(txtQBittorrentProcessName, "Process name used to detect if qBittorrent is running (usually qbittorrent)");
-        toolTip.SetToolTip(chkRestartQBittorrent, "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
+        toolTip.SetToolTip(chkRestartQBittorrent, "Restart qBittorrent after updating the port - recommended for the change to take effect immediately. Also restarts it after its network interface is re-pointed at the active VPN adapter, since its DHT does not come back on the new adapter without a restart.");
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
-        toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
+        toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up. Also covers the warning for a stale binding that is not fixed automatically.");
         toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected, at most 3 times in a row until it reconnects");
-        // Covers all three behaviours this one checkbox gates, not just the identifier case it was
-        // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
+        // Covers every behaviour this one checkbox gates, not just the identifier case it was written
+        // for: the address repair and the port-closed rebind were added behind it in 2.6.7, the re-point
+        // after a protocol or provider switch in 2.7.1.
         // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one
         // remedy, so they belong in one tooltip rather than in separate controls, which the settings-UX
         // rule against artificial option dependencies would rule out anyway. The closing sentence is
         // load-bearing: this is the only setting that makes the app write to another application's
-        // configuration, so a user deciding whether to enable it should know the end state is unchanged.
+        // configuration, so a user deciding whether to enable it should know what it changes: only the
+        // re-point changes the adapter, and only from one that is down to the VPN's live one.
         toolTip.SetToolTip(chkQBittorrentFixInterfaceBinding,
             "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
             "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
             "restart cannot fix it. Re-applies the binding automatically when that happens. Also corrects a bind " +
             "address the adapter no longer has, and - if the forwarded port stops answering after the adapter " +
-            "changed address - nudges qBittorrent into listening on the new one. Your settings are left as you had them.");
+            "changed address - nudges qBittorrent into listening on the new one. After a VPN protocol or provider switch " +
+            "leaves qBittorrent on an adapter that is down, re-points it at the active VPN adapter. Apart from that " +
+            "re-point, your settings are left as you had them.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
@@ -194,7 +198,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(btnTestNicotine, "Test the connection to the bridge plugin using the address and token above");
         toolTip.SetToolTip(txtNicotineProcessName, "Process name used to detect if Nicotine+ is running (usually Nicotine+)");
         toolTip.SetToolTip(chkForceStartNicotine, "Automatically launch Nicotine+ if it is not already running");
-        toolTip.SetToolTip(chkNicotineWarnOnInterfaceMismatch, "Show a warning when Nicotine+'s network interface does not match the configured VPN provider");
+        toolTip.SetToolTip(chkNicotineWarnOnInterfaceMismatch, "Show a warning when Nicotine+'s network interface does not match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up (for example after switching VPN protocol or provider)");
         toolTip.SetToolTip(nudNicotineDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(btnInstallNicotinePlugin, "Install the qbPortWeaver bridge plugin into Nicotine+. Nicotine+ has no remote control of its own, so the plugin is what makes port sync possible.");
         toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after the port is updated, also when restarting the client afterwards failed (leave empty to disable)");
@@ -209,7 +213,7 @@ public partial class SettingsForm : Form
         // matches the Status panel row and the log line so a user recognises one rule, not two.
         toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no installed ProtonVPN or PIA) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Stops after 3 attempts that do not restore a forwarded port, and resumes once one is found. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again, or the VPN provider or adapter changes. If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one (none when the gateway is itself behind another NAT, where a reconnect cannot help). Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks, and only once it has stayed closed for as long as those checks normally take. With qBittorrent and \"Fix the network interface binding when it goes stale\" on, it first nudges qBittorrent onto its adapter's new address if that changed, since restarting the VPN cannot fix that. Fires at most once, then re-arms only after a scheduled check reports the port open again, or the VPN provider or adapter changes. If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one (none when the gateway is itself behind another NAT, where a reconnect cannot help). Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
         toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way).");

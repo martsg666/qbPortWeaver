@@ -58,14 +58,41 @@ internal static class VpnAdapter
     /// <param name="caller">Prefix for the debug lines, so the log names the manager that asked.</param>
     internal static bool IsUp(string adapterName, string caller)
     {
-        bool connected = GetActiveInterfaces()
-            .Exists(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+        bool connected = IsUpQuiet(adapterName);
 
         LogManager.Instance.LogDebug(connected
             ? $"{caller}: Adapter '{adapterName}' is connected"
             : $"{caller}: Adapter '{adapterName}' is not found or not connected");
 
         return connected;
+    }
+
+    /// <summary>
+    /// <see cref="IsUp"/> without the debug lines, for checks that run alongside it in the same cycle
+    /// (the active-adapter lookup behind the interface checks).
+    /// </summary>
+    /// <param name="adapterName">The adapter to look for, matched ignoring case.</param>
+    internal static bool IsUpQuiet(string adapterName) =>
+        GetActiveInterfaces().Exists(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether any adapter named <paramref name="adapterName"/> is up, of any type - unlike
+    /// <see cref="IsUpQuiet"/>, tunnel-type adapters count too. For the check that must never call a live
+    /// adapter down (PortSyncService.ActiveAdapterInsteadOf). <see langword="true"/> when the list cannot be
+    /// read, so an unreadable list never moves a binding.
+    /// </summary>
+    internal static bool IsUpAnyType(string adapterName)
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces().Any(nic =>
+                nic.OperationalStatus == OperationalStatus.Up && nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (NetworkInformationException ex)
+        {
+            LogManager.Instance.LogDebug($"VpnAdapter.IsUpAnyType: {ex.Message}");
+            return true;
+        }
     }
 
     /// <summary>

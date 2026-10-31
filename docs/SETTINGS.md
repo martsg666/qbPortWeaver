@@ -56,12 +56,12 @@ update first.
 | Password | qBittorrent Web UI password | - |
 | Executable | Path to qBittorrent executable | `C:\Program Files\qBittorrent\qbittorrent.exe` |
 | Process name | Process name used to detect if qBittorrent is running | `qbittorrent` |
-| Restart after a port change | Restart qBittorrent after updating the port (recommended) | `True` |
+| Restart after a port change | Restart qBittorrent after updating the port (recommended). Also restarts it after its network interface is re-pointed at the active VPN adapter, since its DHT does not come back on the new adapter without a restart | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 | Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
 | Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name). At most 3 restarts in a row; they start again once qBittorrent reports connected | `True` |
-| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. After a ProtonVPN or PIA protocol switch, re-points qBittorrent from the old adapter, now down, to the active one, and restarts it when **Restart after a port change** is on so DHT starts on the new adapter. Your qBittorrent settings are left as you had them | `True` |
+| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. After a switch of VPN protocol or provider, re-points qBittorrent from the old adapter, now down, to the active VPN adapter, and restarts it when **Restart after a port change** is on so DHT starts on the new adapter. Apart from that re-point, your qBittorrent settings are left as you had them | `True` |
 
 ### Transmission
 

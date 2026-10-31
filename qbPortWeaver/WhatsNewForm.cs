@@ -10,9 +10,10 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.1\n\n" +
-        "Fixed: switching VPN protocol no longer leaves the client on the old adapter\n" +
-        "ProtonVPN and PIA use a different network adapter for each protocol, so after a switch the client " +
-        "stayed bound to the old adapter, which is down, and the port stayed closed. qbPortWeaver now " +
+        "Fixed: switching VPN protocol or provider no longer leaves the client on the old adapter\n" +
+        "ProtonVPN and PIA use a different network adapter for each protocol, and each provider has its own, " +
+        "so after a switch the client stayed bound to the old adapter, which is down, and the port stayed " +
+        "closed. qbPortWeaver now " +
         "re-points qBittorrent at the active adapter when \"Fix the network interface binding when it goes " +
         "stale\" is on, and warns you otherwise, and for Nicotine+. Diagnostics reports it too. qBittorrent " +
         "is then restarted when \"Restart after a port change\" is on, since without a restart its DHT stays " +

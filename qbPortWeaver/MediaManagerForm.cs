@@ -703,6 +703,26 @@ public partial class MediaManagerForm : Form
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
     // Each row carries its own MediaProposal in Tag so row order is irrelevant.
+    // Whether a destination built from a typed name stays inside its library folder once normalised. The
+    // folder is derived from the name as well (RebuildProposedDir), so a name such as ".. - S01E01" or
+    // ".. - cd1" names the folder "..", and the import - whose destination AddFileToLibrary normalises -
+    // would land in the library's parent. Checking the outcome covers every such name, not a list of them.
+    // Unreadable or empty library paths fail closed.
+    private bool IsInsideLibrary(string proposedPath, string mediaType)
+    {
+        string library = (mediaType == MediaProposal.TypeMovie ? txtMoviesLibraryPath.Text : txtTvShowsLibraryPath.Text).Trim();
+        if (library.Length == 0) return false;
+        try
+        {
+            string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(library)) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(proposedPath).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     private List<MediaProposal> BuildProposalsFromGrid()
     {
         var toApply = new List<MediaProposal>();
@@ -726,6 +746,7 @@ public partial class MediaManagerForm : Form
             // folder stays consistent with the new name - not the stale name from the original scan.
             var resolvedDir = RebuildProposedDir(proposedDir, editedName);
             var proposedPath = Path.Combine(resolvedDir, editedName);
+            if (!IsInsideLibrary(proposedPath, original.MediaType)) continue;
 
             if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 toApply.Add(original with { ProposedPath = proposedPath, IsMatched = true });

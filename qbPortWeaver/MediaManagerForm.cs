@@ -1109,9 +1109,6 @@ public partial class MediaManagerForm : Form
         if (raw.Length == 0) return raw;
 
         string name = FileNameParser.SanitizeFileName(Path.GetFileName(raw));
-        // A name of only dots ("." or "..") survives both steps above, and RebuildProposedDir would then name
-        // the movie folder "." or "..", importing into the library root or its parent. Treated as no name.
-        if (name.Trim('.', ' ').Length == 0) return string.Empty;
         // An import never changes the container, so the extension always comes from the source file:
         // a name typed without one would otherwise import as a file nothing opens, and a dotted title
         // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down. A name typed
@@ -1119,6 +1116,10 @@ public partial class MediaManagerForm : Form
         string sourceExtension = row.Tag is RowData rd ? Path.GetExtension(rd.Proposal.OriginalPath) : string.Empty;
         if (sourceExtension.Length > 0 && !name.EndsWith(sourceExtension, StringComparison.OrdinalIgnoreCase))
             name = FileNameParser.IsVideoFile(name) ? Path.ChangeExtension(name, sourceExtension) : name + sourceExtension;
+        // A name that is only dots before its extension ("..", "..mkv") survives the steps above, and
+        // RebuildProposedDir would then name the movie folder "." or "..", importing into the library root
+        // or its parent. Treated as no name, so the row is skipped like an empty one.
+        if (Path.GetFileNameWithoutExtension(name).Trim('.', ' ').Length == 0) return string.Empty;
         return name;
     }
 

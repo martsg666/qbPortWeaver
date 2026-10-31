@@ -18,6 +18,12 @@ public partial class WhatsNewForm : Form
         "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
         "adapter changes\". With it off you are warned instead, as you are for Nicotine+, when the interface " +
         "warning is on. Diagnostics reports it too.\n\n" +
+        "Fixed: later parts of a multi-part movie\n" +
+        "A part that finished after the earlier ones were already imported (and, in Move mode, taken out of " +
+        "the source folder) was imported as the whole movie. It now joins the earlier parts in the library. " +
+        "A part that finishes while the next one is still downloading under a temporary name (\".!qB\", " +
+        "\".!ut\", \".part\") is recognised too, and a source folder that cannot be listed holds its parts " +
+        "back until the next cycle instead of importing them alone.\n\n" +
         "Fixed: Media Manager no longer imports sample clips\n" +
         "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
         "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +

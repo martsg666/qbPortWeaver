@@ -24,6 +24,10 @@ public partial class WhatsNewForm : Form
         "A part that finishes while the next one is still downloading under a temporary name (\".!qB\", " +
         "\".!ut\", \".part\") is recognised too, and a source folder that cannot be listed holds its parts " +
         "back until the next cycle instead of importing them alone.\n\n" +
+        "Fixed: Re-match of a TV episode corrected to just the show name\n" +
+        "Correcting a red TV row to \"Show Name (Year)\" without the episode code now keeps the episode number " +
+        "from the source file instead of skipping the row, and rows that have no episode number anywhere are " +
+        "counted in the status message.\n\n" +
         "Fixed: Media Manager no longer imports sample clips\n" +
         "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
         "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +

@@ -9,6 +9,56 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.1\n\n" +
+        "Fixed: switching VPN protocol or provider no longer leaves qBittorrent on the old adapter\n" +
+        "ProtonVPN and PIA use a different network adapter for each protocol, and each provider has its own, " +
+        "so after a switch the client stayed bound to the old adapter, which is down, and the port stayed " +
+        "closed. qbPortWeaver now re-points qBittorrent at the active adapter and restarts it, since without " +
+        "a restart its DHT may not recover. This is part of the qBittorrent setting \"Fix the network interface " +
+        "binding when it goes stale\", now called \"Fix the interface binding when it goes stale or the VPN " +
+        "adapter changes\". With it off you are warned instead, as you are for Nicotine+, when the interface " +
+        "warning is on. Diagnostics reports it too.\n\n" +
+        "Fixed: later parts of a multi-part movie\n" +
+        "A part that finished after the earlier ones were already imported (and, in Move mode, taken out of " +
+        "the source folder) was imported as the whole movie. It now joins the earlier parts in the library. " +
+        "A part that finishes while the next one is still being written under a temporary name (\".!qB\", " +
+        "\".!ut\", \".part\") is recognised too, and a source folder that cannot be listed holds its parts " +
+        "back until the next cycle instead of importing them alone.\n\n" +
+        "Fixed: Re-match of a TV episode corrected to just the show name\n" +
+        "Correcting a red TV row to \"Show Name (Year)\" without the episode code now keeps the episode number " +
+        "from the source file instead of skipping the row, and rows that have no episode number anywhere are " +
+        "counted in the status message.\n\n" +
+        "Fixed: Scan Now with only one library set\n" +
+        "With only a Movies or only a TV shows library set, Scan Now said \"All files already imported.\" for " +
+        "source files of the other type. It now says how many were skipped and which library to set.\n\n" +
+        "Fixed: Media Manager no longer imports sample clips\n" +
+        "A short sample clip next to a movie or episode could be imported in its place, leaving the real file " +
+        "stuck on a conflict. Files in a folder named \"Sample\", or whose name ends with \"sample\", are now " +
+        "skipped.\n\n" +
+        "Fixed: an interrupted import no longer leaves a partial file in the library\n" +
+        "If qbPortWeaver exited or updated while copying a file into the library, a partial file was left " +
+        "under the final name and the real one was then never imported. Copies now go to a temporary " +
+        "name first and take the final name only once complete. A temporary file an interrupted copy left " +
+        "behind is removed after an hour if that import is not retried.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "The helper service now reads the settings of the Windows user who asks for a recovery, so auto-recovery " +
+        "also works for a second user signed in on the same PC. Clear Logs says so when a log file could not be deleted, instead of reporting it cleared. A " +
+        "problem updating the Windows startup entry now shows on the tray. Transmission running as a service " +
+        "is given time to answer after a restart, so the next sync does not fail. A hardlink into a folder " +
+        "whose name ends in a dot no longer falls back to a full copy, and a Proposed name made only of dots " +
+        "is ignored instead of importing outside the library. The Nicotine+ plugin's port test now finishes " +
+        "within the time qbPortWeaver waits for it; to get it, click Update Plugin on the Nicotine+ tab in " +
+        "Settings, then restart Nicotine+.\n\n" +
+        "Changed: a client that does not answer after a restart is reported\n" +
+        "When qbPortWeaver starts or restarts your client and its Web UI does not answer within 30 seconds, " +
+        "the log now says so with a warning, instead of only showing the connection errors that follow.\n\n" +
+        "Changed: Static port examples in the README\n" +
+        "The README now names VPN providers that keep a forwarded port for good, such as AirVPN, Windscribe " +
+        "with a static IP and TorGuard, so you can tell whether Static port fits yours.\n\n" +
+        "Changed: the VPN exit address check now covers PIA\n" +
+        "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
+        "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +
+        "Previously released\n\n" +
         "New in 2.7.0\n\n" +
         "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +
         "Testing for this release found that ProtonVPN's OpenVPN connections can forward your port on one " +
@@ -124,7 +174,6 @@ public partial class WhatsNewForm : Form
         "Diagnostics now warns when the helper service is from a different version than the app. The " +
         "Nicotine+ plugin moves to a free port only when its port is taken, and otherwise says to check " +
         "its Address setting. Closing qbPortWeaver during a sync no longer writes errors to the log.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +

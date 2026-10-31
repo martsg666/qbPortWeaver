@@ -110,23 +110,30 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         {
             var members = group.ToList();
             var suffixes = members.Select(f => ExtractPartSuffix(Path.GetFileName(f.File))).ToList();
-            bool isMultiPart = suffixes.TrueForAll(s => s is not null) && IsMultiPartGroup(members[0], members.Select(f => f.File));
+            bool? isMultiPart = suffixes.TrueForAll(s => s is not null)
+                ? IsMultiPartGroup(members[0], members.Select(f => f.File))
+                : false;
+            // The source folder could not be listed: deciding on this list alone could import a part as a
+            // standalone movie, so the group waits for the next cycle (AddSiblingsOnDisk logged why).
+            if (isMultiPart is null) continue;
 
             for (int i = 0; i < members.Count; i++)
-                result.Add((members[i].File, members[i].Title, members[i].Year, isMultiPart ? suffixes[i] : null));
+                result.Add((members[i].File, members[i].Title, members[i].Year, isMultiPart.Value ? suffixes[i] : null));
         }
         return result;
     }
 
     // Applies the multi-part rule to the group's files plus every video file beside them with the same
-    // title and year, imported or still being written. Only the source folder is listed: a part an
-    // earlier Move import already took out of it is not seen. A folder that cannot be listed leaves the
-    // group to decide alone. The part numbers must run from 1 with no gap: two versions of one movie
-    // ("DVD5" and "DVD9") carry a part token too, and stacking them would play one after the other.
-    private static bool IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
+    // title and year, imported, still being written, or still carrying a client's temporary extension
+    // for an unfinished file. Only the source folder is listed here: a part an earlier Move import already took out of
+    // it is caught after the TMDB match instead (PartSuffixFromLibrary). Null when the folder cannot be
+    // listed, so the caller holds the group back rather than decide alone. The part numbers must run from
+    // 1 with no gap: two versions of one movie ("DVD5" and "DVD9") carry a part token too, and stacking
+    // them would play one after the other.
+    private static bool? IsMultiPartGroup((string File, string Title, int? Year) first, IEnumerable<string> groupFiles)
     {
         var files = new HashSet<string>(groupFiles, StringComparer.OrdinalIgnoreCase);
-        AddSiblingsOnDisk(first, files);
+        if (!AddSiblingsOnDisk(first, files)) return null;
 
         var suffixes = files.Select(f => ExtractPartSuffix(Path.GetFileName(f))).ToList();
         if (suffixes.Count < 2 || !suffixes.TrueForAll(s => s is not null)) return false;
@@ -137,15 +144,29 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         return numbers.SequenceEqual(Enumerable.Range(1, numbers.Count));
     }
 
-    // Adds the video files beside first that parse to its title and year, for IsMultiPartGroup.
-    private static void AddSiblingsOnDisk((string File, string Title, int? Year) first, HashSet<string> files)
+    // Extensions some clients add to a file until it is complete (".!qB", ".!ut", ".part"). A part still carrying one is not importable yet, but it is a sibling: without
+    // it, an earlier part that finished first looked alone and was imported as the whole movie.
+    private static readonly string[] _unfinishedExtensions = [".!qB", ".!ut", ".part"];
+
+    private static string WithoutUnfinishedExtension(string path) =>
+        _unfinishedExtensions.FirstOrDefault(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            is { } unfinished
+            ? path[..^unfinished.Length]
+            : path;
+
+    // Adds the video files beside first that parse to its title and year, for IsMultiPartGroup, counting
+    // an unfinished file by the name it will have. False when the folder cannot be listed.
+    private static bool AddSiblingsOnDisk((string File, string Title, int? Year) first, HashSet<string> files)
     {
         var folder = Path.GetDirectoryName(first.File);
-        if (string.IsNullOrEmpty(folder)) return;
+        if (string.IsNullOrEmpty(folder)) return true;
         try
         {
             var paths = MediaImporter.InvokeWithSmbRetry(folder, () => Directory.GetFiles(folder));
-            foreach (var path in paths.Where(FileNameParser.IsVideoFile))
+            // Sample clips are skipped here as in EnumerateSourceFolder: "Title.2001.sample.mkv" parses to the
+            // parts' title and year with no part number, which would make the group read as not multi-part.
+            foreach (var path in paths.Select(WithoutUnfinishedExtension)
+                         .Where(p => FileNameParser.IsVideoFile(p) && !FileNameParser.IsSampleFile(p)))
             {
                 var fileName = Path.GetFileName(path);
                 var (title, year) = FileNameParser.ParseTitleYear(fileName);
@@ -153,10 +174,14 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
                     && !IsBarePartName(fileName, title, year))
                     files.Add(path);
             }
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            LogManager.Instance.LogDebug($"MovieProcessor.AddSiblingsOnDisk: Could not list '{folder}': {ex.Message}", Subsystem.MediaManager);
+            LogManager.Instance.LogMessage(
+                $"Could not list '{folder}' to look for other parts of '{Path.GetFileName(first.File)}' - trying again next cycle: {ex.Message}",
+                LogLevel.Info, Subsystem.MediaManager);
+            return false;
         }
     }
 
@@ -272,9 +297,40 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // recognised it as one part of a multi-part movie - the same folder layout as folder-dependent parts.
     private string BuildSelfDescribingMoviePath(string filePath, MovieInfo info, string? partSuffix)
     {
+        partSuffix ??= PartSuffixFromLibrary(filePath, info);
         if (partSuffix is null) return BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
 
         return BuildFolderLayoutPath(libraryPath, info, partSuffix, Path.GetExtension(filePath));
+    }
+
+    // The part suffix of a file whose earlier parts are already in the library, or null. The source folder
+    // only shows the parts still in it, so once an earlier part was imported - and in Move mode taken out
+    // of the source - a later part looked alone and was imported as "Title (Year).ext" beside
+    // "Title (Year) - cd1.ext". Checked after the TMDB match because the library folder is named from it.
+    // Only for a file whose name carries a part token, and only when that movie's library folder already
+    // holds a part; a folder that cannot be listed counts as holding none (the import into it would fail).
+    private string? PartSuffixFromLibrary(string filePath, MovieInfo info)
+    {
+        var suffix = ExtractPartSuffix(Path.GetFileName(filePath));
+        if (suffix is null) return null;
+
+        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
+        var folder = Path.Combine(libraryPath, plexFolderName);
+        try
+        {
+            var existing = MediaImporter.InvokeWithSmbRetry(folder, () => Directory.GetFiles(folder));
+            bool hasParts = existing.Any(path => FileNameParser.IsVideoFile(path)
+                && TrySplitPartSuffix(Path.GetFileNameWithoutExtension(path), out var baseName, out _)
+                && string.Equals(baseName, plexFolderName, StringComparison.OrdinalIgnoreCase));
+            if (!hasParts) return null;
+            LogManager.Instance.LogDebug($"MovieProcessor.PartSuffixFromLibrary: '{Path.GetFileName(filePath)}' is part '{suffix}' of '{plexFolderName}', which already has parts in the library", Subsystem.MediaManager);
+            return suffix;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // DirectoryNotFoundException (an IOException) is the usual case: the movie is not in the library yet.
+            return null;
+        }
     }
 
     // Builds the library target path for a standalone movie file.
@@ -364,13 +420,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
 
             foreach (var subtitle in subtitles)
             {
-                var subName = Path.GetFileName(subtitle);
-                if (!subName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
-                // Require the character immediately after the base name to be '.' or end of string
-                // so "Movie.mkv" does not claim "Movie 2.srt" as a companion.
-                if (subName.Length > videoBase.Length && subName[videoBase.Length] != '.') continue;
-
-                var suffix = subName[videoBase.Length..];
+                if (FileNameParser.SubtitleSuffixFor(Path.GetFileName(subtitle), videoBase) is not { } suffix) continue;
                 var targetPath = Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, suffix));
                 MediaManagerService.ImportFile(subtitle, targetPath, dryRun, importMode);
             }

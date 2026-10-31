@@ -246,8 +246,9 @@ public sealed class LogManager
     /// <see cref="LogStateChange"/> for it writes again. Call when the condition clears.</summary>
     public void ClearLogState(string key) => _lastStateMessage.TryRemove(key, out _);
 
-    /// <summary>Deletes all log files and starts a fresh log. Thread-safe.</summary>
-    public void ClearLogs()
+    /// <summary>Deletes all log files and starts a fresh log. Thread-safe. Returns <see langword="null"/> on
+    /// success, or the reason when a file could not be deleted.</summary>
+    public string? ClearLogs()
     {
         lock (_lock)
         {
@@ -277,10 +278,14 @@ public sealed class LogManager
                 // Write the sentinel while still holding the lock so no concurrent LogMessage
                 // can interleave between the delete and this entry.
                 WriteRaw(FormatEntry("Logs cleared by user", LogLevel.Info, Subsystem.MainApp));
+                return null;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"LogManager.ClearLogs: {ex.Message}");
+                // Returned rather than logged here: logging takes this lock, and the caller tells the
+                // user, who was otherwise shown "Logs cleared" for logs still on disk.
+                return ex.Message;
             }
         }
     }

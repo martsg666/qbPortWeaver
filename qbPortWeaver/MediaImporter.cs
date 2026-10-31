@@ -106,14 +106,14 @@ internal static partial class MediaImporter
             {
                 LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Delete(destinationPath);
-                File.Copy(sourcePath, destinationPath, overwrite: false);
+                CopyThroughPartial(sourcePath, destinationPath);
                 LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
         }
         else
         {
             LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
-            File.Copy(sourcePath, destinationPath, overwrite: false);
+            CopyThroughPartial(sourcePath, destinationPath);
             LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
         }
     }
@@ -166,6 +166,11 @@ internal static partial class MediaImporter
     /// lands beside a different file that holds the video's name.</returns>
     internal static bool AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
     {
+        // Windows' normal path clean-up up front (trailing dots and spaces trimmed from each name, '/' read as
+        // '\'). The hardlink goes through the \\?\ prefix (ToExtendedPath), which skips that clean-up, while
+        // creating the folder and the copy fallback do not: a show folder ending in "." was created without
+        // the dot, the hardlink to the dotted path then failed, and every such import became a full copy.
+        destinationPath = Path.GetFullPath(destinationPath);
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
             return true;
 
@@ -201,12 +206,12 @@ internal static partial class MediaImporter
                     break;
 
                 case ImportMode.Copy:
-                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                    CopyThroughPartial(sourcePath, destinationPath);
                     LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 case ImportMode.Move:
-                    File.Move(sourcePath, destinationPath);
+                    MoveIntoLibrary(sourcePath, destinationPath);
                     LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
@@ -222,6 +227,65 @@ internal static partial class MediaImporter
 
         AddToLibraryIndex(destinationPath);
         return true;
+    }
+
+    // Suffix of the temporary name a copy is written under before it takes its library name.
+    private const string PartialSuffix = ".qbpw-partial";
+
+    // Copies sourcePath to destinationPath through a temporary name, then renames it into place. The import
+    // runs in the background and nothing waits for it when the app exits, so a copy cut short (exit, update,
+    // sign-out) used to leave a truncated file under the final library name, which the next cycles then
+    // reported as a destination conflict for good. Now only the temporary file can be left behind: a later
+    // attempt overwrites it, and the media server ignores it for its extension. The rename stays in one
+    // folder, so it is a single step. The temporary file is removed when the copy or the rename fails.
+    private static void CopyThroughPartial(string sourcePath, string destinationPath)
+    {
+        string partialPath = destinationPath + PartialSuffix;
+        try
+        {
+            File.Copy(sourcePath, partialPath, overwrite: true);
+            File.Move(partialPath, destinationPath, overwrite: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
+        {
+            TryDeletePartial(partialPath);
+            throw;
+        }
+    }
+
+    private static void TryDeletePartial(string partialPath)
+    {
+        try
+        {
+            File.Delete(partialPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"MediaImporter.TryDeletePartial: could not remove '{Path.GetFileName(partialPath)}': {ex.Message}", Subsystem.MediaManager);
+        }
+    }
+
+    // Move mode. On one volume or share File.Move is a rename, which cannot be cut short. Across them it is a
+    // copy followed by a delete, so it goes through CopyThroughPartial like a copy, and the source is removed
+    // only once the library file is complete. A source that cannot be removed then is reported but does not
+    // fail the import: the library file is whole, and the next cycle finds it already in the library.
+    private static void MoveIntoLibrary(string sourcePath, string destinationPath)
+    {
+        if (string.Equals(Path.GetPathRoot(Path.GetFullPath(sourcePath)), Path.GetPathRoot(Path.GetFullPath(destinationPath)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            File.Move(sourcePath, destinationPath);
+            return;
+        }
+        CopyThroughPartial(sourcePath, destinationPath);
+        try
+        {
+            File.Delete(sourcePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogMessage($"Imported '{Path.GetFileName(destinationPath)}' but could not remove the source file: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+        }
     }
 
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be
@@ -435,7 +499,7 @@ internal static partial class MediaImporter
     /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
     /// would falsely report library files as missing and risk creating duplicates.
     /// </summary>
-    internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
+    internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, bool sweepStalePartials = false, CancellationToken cancellationToken = default)
     {
         await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         // TryReuseCachedIndex records the new paths and "cycle 1" before the build runs, so a build that
@@ -492,6 +556,7 @@ internal static partial class MediaImporter
                     anyEnumerationFailed = true;
                     continue;
                 }
+                if (sweepStalePartials) SweepStalePartials(files);
 
                 var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                 cached += c;
@@ -578,6 +643,33 @@ internal static partial class MediaImporter
             sw.Stop();
             LogManager.Instance.LogMessage($"{label} could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return new(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    // How long a temporary copy must have gone unwritten before SweepStalePartials removes it: a copy in
+    // progress keeps updating its file, so an hour-old one belongs to an import that was cut short.
+    private static readonly TimeSpan StalePartialAge = TimeSpan.FromHours(1);
+
+    // Removes the temporary files an interrupted copy left in the library (see CopyThroughPartial) whose
+    // import will not be retried, typically because the source is gone. Only qbPortWeaver's own suffix,
+    // only untouched for StalePartialAge, and only on import cycles that may change the library (never
+    // Scan Now or a dry run - the caller decides). Rides on the library listing the index build already
+    // makes, so it costs no extra walk; a delete that fails is left for the next build.
+    private static void SweepStalePartials(List<FileInfo> files)
+    {
+        var cutoff = DateTime.UtcNow - StalePartialAge;
+        foreach (var file in files.Where(f => f.Name.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase)
+                                              && f.LastWriteTimeUtc < cutoff))
+        {
+            try
+            {
+                file.Delete();
+                LogManager.Instance.LogMessage($"Removed an unfinished import left in the library: '{file.FullName}'", LogLevel.Info, Subsystem.MediaManager);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogDebug($"MediaImporter.SweepStalePartials: could not remove '{file.FullName}': {ex.Message}", Subsystem.MediaManager);
+            }
         }
     }
 

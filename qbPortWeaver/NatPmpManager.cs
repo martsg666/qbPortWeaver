@@ -217,6 +217,10 @@ public sealed class NatPmpManager : IVpnManager
     public bool IsAdapterMatch(string interfaceName)
         => VpnRegistryConfig.AdapterNamesMatchExactly(_adapter.Name, interfaceName);
 
+    /// <inheritdoc />
+    // The configured adapter, while it is up; re-enumerated, since the stored _adapter keeps a stale status.
+    public string? ActiveAdapterName => VpnAdapter.IsUpQuiet(_adapter.Name) ? _adapter.Name : null;
+
     /// <summary>
     /// Returns all network adapters whose gateway actively responds to NAT-PMP,
     /// including TUN/VPN adapters where the gateway is inferred from the unicast address.

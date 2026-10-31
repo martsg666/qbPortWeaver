@@ -45,9 +45,14 @@ namespace qbPortWeaver.HelperService;
 /// the documented privilege boundary the helper crosses.
 /// The reverse direction is not covered either: the pipe is one instance, recreated per connection,
 /// and the tray app does not check who serves it, so another user's process that creates the pipe
-/// name between connections could answer requests with a made-up result or hold the name. The worst
-/// outcome is a recovery reported wrongly or not run - no privilege is gained - and closing it would
-/// need a server-identity check in HelperServiceClient, so it is accepted alongside the boundary above.
+/// name between connections could answer requests with a made-up result or hold the name. For an
+/// ordinary user's process the worst outcome is a recovery reported wrongly or not run, with no
+/// privilege gained. The tray app connects at the default impersonation level, which the helper needs
+/// for RunAsClient, so a squatter holding the impersonate privilege (a service account such as
+/// LocalService) could also act as the tray user while it holds the pipe; such an account already has
+/// stronger routes than this one. Closing it would need a server-identity check in HelperServiceClient
+/// (GetNamedPipeServerProcessId against the helper service's process), so it is accepted alongside the
+/// boundary above.
 /// </summary>
 internal sealed partial class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {

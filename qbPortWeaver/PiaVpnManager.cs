@@ -42,6 +42,35 @@ public sealed class PiaVpnManager : IVpnManager
     /// <inheritdoc />
     public bool PortForwardingUnavailable => _portForwardingUnavailable;
 
+    // The forward address GetForwardAddressAsync settled on, once per instance (so once per cycle), like
+    // ProtonVpnManager: only the exit-address check reads it, and each read costs a piactl run.
+    private bool _forwardResolved;
+    private System.Net.IPAddress? _forwardAddress;
+
+    /// <inheritdoc />
+    // The VPN address PIA reports for the connection (piactl get vpnip). PIA's gateway does not answer
+    // NAT-PMP and its WireGuard connections leave no route naming the server, so this is the one address
+    // PIA itself gives. In testing it always equalled the STUN exit address, and the forward was reachable
+    // on it. Anything but an IPv4 address (PIA prints "Unknown" while it has none) is no forward address.
+    public async Task<System.Net.IPAddress?> GetForwardAddressAsync(CancellationToken cancellationToken = default)
+    {
+        if (_forwardResolved) return _forwardAddress;
+        string? output = await Task.Run(() => RunPiactl("get vpnip"), cancellationToken).ConfigureAwait(false);
+        System.Net.IPAddress? address =
+            System.Net.IPAddress.TryParse(output, out var parsed)
+            && parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+            && !parsed.Equals(System.Net.IPAddress.Any)
+                ? parsed
+                : null;
+        LogManager.Instance.LogDebug($"PiaVpnManager.GetForwardAddressAsync: forward address {address?.ToString() ?? "none"} from piactl");
+        _forwardAddress = address;
+        _forwardResolved = true;
+        return address;
+    }
+
+    /// <inheritdoc />
+    public System.Net.IPAddress? TunnelAddress => ActiveAdapterName is { } adapter ? VpnAdapter.GetIPv4Address(adapter) : null;
+
     /// <inheritdoc />
     public bool IsVpnConnected()
     {

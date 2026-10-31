@@ -88,7 +88,7 @@ function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
 # Whether traffic leaves from the address the port is forwarded on. The app looks this up
 # when a port check reports the port closed or cannot determine it (and on open results while its
-# reconnects are spent), and only for NAT-PMP and ProtonVPN, so
+# reconnects are spent), and only for NAT-PMP, ProtonVPN and PIA, so
 # "Not checked" is normal while the port is open, for other providers, and for app versions without these keys.
 function AddressMatch($s) {
     if ($s.vpnExitAddressMismatch) {

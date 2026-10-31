@@ -15,6 +15,9 @@ public partial class WhatsNewForm : Form
         "stayed bound to the old adapter, which is down, and the port stayed closed. qbPortWeaver now " +
         "re-points qBittorrent at the active adapter when \"Fix the network interface binding when it goes " +
         "stale\" is on, and warns you otherwise, and for Nicotine+. Diagnostics reports it too.\n\n" +
+        "Changed: the VPN exit address check now covers PIA\n" +
+        "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
+        "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +
         "Previously released\n\n" +
         "New in 2.7.0\n\n" +
         "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +

@@ -61,12 +61,12 @@ public interface IVpnManager
     /// <see langword="null"/>. Compared with the address traffic actually leaves from (see
     /// <see cref="VpnExitAddress"/>): when they differ, peers are given the exit address and cannot
     /// reach the forward.
-    /// <para>NAT-PMP takes it from the gateway's external-address reply when the manager is created. PIA
-    /// and Static port report none, so the check does not run for them. NAT-PMP's is
+    /// <para>NAT-PMP takes it from the gateway's external-address reply when the manager is created.
+    /// Static port reports none, so the check does not run for it. NAT-PMP's is
     /// <see langword="null"/> when the gateway reports 0.0.0.0, on the instance reused when the gateway
     /// does not answer, and on the stand-in for an adapter with no gateway yet. Callers read it through
-    /// <see cref="GetForwardAddressAsync"/>, which a provider that has to ask for it (ProtonVPN) overrides;
-    /// ProtonVPN reports none here.</para>
+    /// <see cref="GetForwardAddressAsync"/>, which a provider that has to ask for it (ProtonVPN, PIA)
+    /// overrides; those report none here.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;
 
@@ -76,8 +76,9 @@ public interface IVpnManager
     /// <para>ProtonVPN asks its tunnel gateway over NAT-PMP, the way NAT-PMP mode does, and falls back to the
     /// server address its client logs on each connection; once per instance, so once per cycle. Its log line
     /// is written once per connection and rotates out within hours, so the gateway is the source that lasts.
+    /// PIA reads the VPN address piactl reports (<c>piactl get vpnip</c>), also once per instance.
     /// <see langword="null"/> from a provider that reports a forward address (gateway silent and log lines
-    /// gone, or any NAT-PMP case above) is treated by the sync loop as a failed lookup, not as a provider
+    /// gone, piactl reporting none, or any NAT-PMP case above) is treated by the sync loop as a failed lookup, not as a provider
     /// that reports none.</para>
     /// </summary>
     Task<System.Net.IPAddress?> GetForwardAddressAsync(CancellationToken cancellationToken = default) =>
@@ -93,7 +94,7 @@ public interface IVpnManager
 
     /// <summary>
     /// How the exit-address messages name where the forward comes from - the NAT-PMP gateway on its
-    /// adapter, or the ProtonVPN server - so the user knows what to change. It opens the message, so it
+    /// adapter, the ProtonVPN server, or PIA - so the user knows what to change. It opens the message, so it
     /// reads as a sentence start. Defaults to <see cref="ProviderName"/>.
     /// </summary>
     string ForwardSource => ProviderName;

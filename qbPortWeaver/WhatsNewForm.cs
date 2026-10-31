@@ -40,8 +40,8 @@ public partial class WhatsNewForm : Form
         "under the final name and the real one was then never imported. Copies now go to a temporary " +
         "name first and take the final name only once complete.\n\n" +
         "Fixed: several smaller issues\n" +
-        "Auto-recovery now works for every Windows user on the PC, not only the first one the helper service " +
-        "served. Clear Logs says so when a log file could not be deleted, instead of reporting it cleared. A " +
+        "The helper service now reads the settings of the Windows user who asks for a recovery, so auto-recovery " +
+        "also works for a second user signed in on the same PC. Clear Logs says so when a log file could not be deleted, instead of reporting it cleared. A " +
         "problem updating the Windows startup entry now shows on the tray. Transmission running as a service " +
         "is given time to answer after a restart, so the next sync does not fail. A hardlink into a folder " +
         "whose name ends in a dot no longer falls back to a full copy, and a Proposed name made only of dots " +

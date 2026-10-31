@@ -248,7 +248,7 @@ Every option, with its meaning and default, is listed in the **[settings referen
 
 > **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the VPN adapter dropdown. See the NAT-PMP Configuration section below.
 
-> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, reselect the active adapter wherever you have pinned it - the **VPN adapter** dropdown and your client's **Network Interface** binding.
+> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, qBittorrent is re-pointed to the new adapter for you when **Fix the interface binding when it goes stale or the VPN adapter changes** is on. Reselect it yourself in Nicotine+'s network interface setting, and in the **VPN adapter** dropdown if you use NAT-PMP or Static port.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 

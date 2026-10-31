@@ -38,7 +38,8 @@ public partial class WhatsNewForm : Form
         "Fixed: an interrupted import no longer leaves a partial file in the library\n" +
         "If qbPortWeaver exited or updated while copying a file into the library, a partial file was left " +
         "under the final name and the real one was then never imported. Copies now go to a temporary " +
-        "name first and take the final name only once complete.\n\n" +
+        "name first and take the final name only once complete. A temporary file an interrupted copy left " +
+        "behind is removed after an hour if that import is not retried.\n\n" +
         "Fixed: several smaller issues\n" +
         "The helper service now reads the settings of the Windows user who asks for a recovery, so auto-recovery " +
         "also works for a second user signed in on the same PC. Clear Logs says so when a log file could not be deleted, instead of reporting it cleared. A " +

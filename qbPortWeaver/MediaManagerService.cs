@@ -121,7 +121,7 @@ public static class MediaManagerService
                 Subsystem.MediaManager);
 
         var prep = await PrepareClassifiedSourcesAsync(
-            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, cancellationToken).ConfigureAwait(false);
+            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, sweepStalePartials: !dryRun, cancellationToken).ConfigureAwait(false);
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
@@ -183,7 +183,7 @@ public static class MediaManagerService
 
         // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
         var prep = await PrepareClassifiedSourcesAsync(
-            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, cancellationToken).ConfigureAwait(false);
+            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, sweepStalePartials: false, cancellationToken).ConfigureAwait(false);
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
@@ -529,7 +529,7 @@ public static class MediaManagerService
     private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total, string[] UnreadableSources)?>
         PrepareClassifiedSourcesAsync(
             string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
-            bool allowLibraryReuse, CancellationToken cancellationToken)
+            bool allowLibraryReuse, bool sweepStalePartials, CancellationToken cancellationToken)
     {
         await Task.Run(() =>
         {
@@ -545,7 +545,7 @@ public static class MediaManagerService
         // On its own task: BuildLibraryIndexAsync does its walk synchronously before it first yields, so
         // called directly it would finish before the source listing even started. Started ahead of the
         // source folders' existence checks too, which against an offline share take seconds each.
-        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, sweepStalePartials, cancellationToken), cancellationToken);
         List<string> unreadableFolders;
         List<(string Folder, List<FileInfo> Candidates, bool Failed)> enumeration;
         try

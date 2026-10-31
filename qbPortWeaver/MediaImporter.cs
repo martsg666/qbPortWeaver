@@ -499,7 +499,7 @@ internal static partial class MediaImporter
     /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
     /// would falsely report library files as missing and risk creating duplicates.
     /// </summary>
-    internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
+    internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, bool sweepStalePartials = false, CancellationToken cancellationToken = default)
     {
         await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         // TryReuseCachedIndex records the new paths and "cycle 1" before the build runs, so a build that
@@ -556,6 +556,7 @@ internal static partial class MediaImporter
                     anyEnumerationFailed = true;
                     continue;
                 }
+                if (sweepStalePartials) SweepStalePartials(files);
 
                 var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                 cached += c;
@@ -642,6 +643,33 @@ internal static partial class MediaImporter
             sw.Stop();
             LogManager.Instance.LogMessage($"{label} could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return new(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    // How long a temporary copy must have gone unwritten before SweepStalePartials removes it: a copy in
+    // progress keeps updating its file, so an hour-old one belongs to an import that was cut short.
+    private static readonly TimeSpan StalePartialAge = TimeSpan.FromHours(1);
+
+    // Removes the temporary files an interrupted copy left in the library (see CopyThroughPartial) whose
+    // import will not be retried, typically because the source is gone. Only qbPortWeaver's own suffix,
+    // only untouched for StalePartialAge, and only on import cycles that may change the library (never
+    // Scan Now or a dry run - the caller decides). Rides on the library listing the index build already
+    // makes, so it costs no extra walk; a delete that fails is left for the next build.
+    private static void SweepStalePartials(List<FileInfo> files)
+    {
+        var cutoff = DateTime.UtcNow - StalePartialAge;
+        foreach (var file in files.Where(f => f.Name.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase)
+                                              && f.LastWriteTimeUtc < cutoff))
+        {
+            try
+            {
+                file.Delete();
+                LogManager.Instance.LogMessage($"Removed an unfinished import left in the library: '{file.FullName}'", LogLevel.Info, Subsystem.MediaManager);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogDebug($"MediaImporter.SweepStalePartials: could not remove '{file.FullName}': {ex.Message}", Subsystem.MediaManager);
+            }
         }
     }
 

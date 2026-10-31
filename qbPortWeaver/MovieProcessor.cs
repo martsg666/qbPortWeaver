@@ -124,8 +124,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     }
 
     // Applies the multi-part rule to the group's files plus every video file beside them with the same
-    // title and year, imported, still being written, or still carrying a client's unfinished-download
-    // extension. Only the source folder is listed here: a part an earlier Move import already took out of
+    // title and year, imported, still being written, or still carrying a client's temporary extension
+    // for an unfinished file. Only the source folder is listed here: a part an earlier Move import already took out of
     // it is caught after the TMDB match instead (PartSuffixFromLibrary). Null when the folder cannot be
     // listed, so the caller holds the group back rather than decide alone. The part numbers must run from
     // 1 with no gap: two versions of one movie ("DVD5" and "DVD9") carry a part token too, and stacking
@@ -144,8 +144,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         return numbers.SequenceEqual(Enumerable.Range(1, numbers.Count));
     }
 
-    // Extensions download clients add to a file until it is complete (qBittorrent's ".!qB", uTorrent's
-    // ".!ut", and ".part"). A part still carrying one is not importable yet, but it is a sibling: without
+    // Extensions some clients add to a file until it is complete (".!qB", ".!ut", ".part"). A part still carrying one is not importable yet, but it is a sibling: without
     // it, an earlier part that finished first looked alone and was imported as the whole movie.
     private static readonly string[] _unfinishedExtensions = [".!qB", ".!ut", ".part"];
 
@@ -156,7 +155,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
             : path;
 
     // Adds the video files beside first that parse to its title and year, for IsMultiPartGroup, counting
-    // an unfinished download by the name it will have. False when the folder cannot be listed.
+    // an unfinished file by the name it will have. False when the folder cannot be listed.
     private static bool AddSiblingsOnDisk((string File, string Title, int? Year) first, HashSet<string> files)
     {
         var folder = Path.GetDirectoryName(first.File);

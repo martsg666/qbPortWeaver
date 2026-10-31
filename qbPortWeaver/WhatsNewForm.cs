@@ -21,7 +21,7 @@ public partial class WhatsNewForm : Form
         "Fixed: later parts of a multi-part movie\n" +
         "A part that finished after the earlier ones were already imported (and, in Move mode, taken out of " +
         "the source folder) was imported as the whole movie. It now joins the earlier parts in the library. " +
-        "A part that finishes while the next one is still downloading under a temporary name (\".!qB\", " +
+        "A part that finishes while the next one is still being written under a temporary name (\".!qB\", " +
         "\".!ut\", \".part\") is recognised too, and a source folder that cannot be listed holds its parts " +
         "back until the next cycle instead of importing them alone.\n\n" +
         "Fixed: Re-match of a TV episode corrected to just the show name\n" +

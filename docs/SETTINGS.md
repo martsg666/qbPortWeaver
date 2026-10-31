@@ -59,7 +59,7 @@ update first.
 | Restart after a port change | Restart qBittorrent after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
-| Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
+| Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up. Also controls the warning for a stale binding that is not fixed automatically | `True` |
 | Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name). At most 3 restarts in a row; they start again once qBittorrent reports connected | `True` |
 | Fix the interface binding when it goes stale or the VPN adapter changes | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. After a switch of VPN protocol or provider, re-points qBittorrent from the old adapter, now down, to the active VPN adapter, and restarts it so DHT starts on the new adapter (once, with the port-change restart when the port changes too and that restart is on). Apart from that re-point, your qBittorrent settings are left as you had them | `True` |
 
@@ -102,7 +102,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Executable | Path to the Nicotine+ executable, also used to find a portable installation's data folder | `C:\Program Files\Nicotine+\Nicotine+.exe` |
 | Process name | Process name used to detect if Nicotine+ is running | `Nicotine+` |
 | Force-start if not running | Automatically launch Nicotine+ if it is not running | `True` |
-| Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider | `True` |
+| Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
 ### Auto-Recovery

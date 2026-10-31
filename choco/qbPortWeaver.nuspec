@@ -52,7 +52,7 @@ For full setup instructions, see https://github.com/martsg666/qbPortWeaver#readm
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
-    <tags>qbittorrent transmission deluge nicotine nicotine-plus soulseek vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
+    <tags>qbittorrent transmission deluge nicotine nicotine-plus soulseek vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery static-port airvpn windscribe torguard</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
     <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>

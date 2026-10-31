@@ -282,7 +282,9 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 ### 6. Static Port Configuration
 
-Some VPN providers assign a forwarded port once, from your account on their website, and keep it the same for as long as you have it, with no NAT-PMP or local client to ask. Use **Static port** for those:
+Some VPN providers assign a forwarded port once, from your account on their website, and keep it the same for as long as you have it, with no NAT-PMP or local client to ask. For example, AirVPN (ports reserved in your account, on every server), Windscribe with a static IP (port forwards on the static IP are permanent; the regular plan's 7-day forwards are not), and TorGuard (ports requested in the client area, for the server IP you requested them on). Providers change their terms, so check that yours keeps the port before choosing Static port.
+
+Use **Static port** for those:
 - Create the port forward in your VPN provider's account settings and note the port number.
 - Set `VPN Provider` to `Static port` in qbPortWeaver Settings.
 - Select your VPN's **network adapter** in the VPN adapter dropdown. The list shows every adapter that is currently up and has an IPv4 address, so connect the VPN first.

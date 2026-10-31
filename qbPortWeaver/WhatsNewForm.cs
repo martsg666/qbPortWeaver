@@ -29,6 +29,9 @@ public partial class WhatsNewForm : Form
         "Changed: a client that does not answer after a restart is reported\n" +
         "When qbPortWeaver starts or restarts your client and its Web UI does not answer within 30 seconds, " +
         "the log now says so with a warning, instead of only showing the connection errors that follow.\n\n" +
+        "Changed: Static port examples in the README\n" +
+        "The README now names VPN providers that keep a forwarded port for good, such as AirVPN, Windscribe " +
+        "with a static IP and TorGuard, so you can tell whether Static port fits yours.\n\n" +
         "Changed: the VPN exit address check now covers PIA\n" +
         "With PIA, qbPortWeaver now also checks that your traffic leaves from the VPN address PIA reports, " +
         "as it does for NAT-PMP and ProtonVPN, with the same messages, Diagnostics row and reconnects.\n\n" +

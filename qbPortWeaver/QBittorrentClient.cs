@@ -285,7 +285,7 @@ public sealed class QBittorrentClient : ManagedClientBase
         var live = await GetNetworkInterfacesAsync(cancellationToken).ConfigureAwait(false);
         if (live is null) return (false, null);
 
-        string? expected = live.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.Ordinal)).Value;
+        string? expected = live.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.OrdinalIgnoreCase)).Value;
         if (expected is null)
         {
             // The bound adapter is not present right now. That is the ordinary VPN-disconnected state,
@@ -581,6 +581,17 @@ public sealed class QBittorrentClient : ManagedClientBase
         // check compares against, so recording an unwritten value would suppress a real repair.
         _storedInterfaceToken = expectedToken;
         return true;
+    }
+
+    /// <summary>
+    /// The token qBittorrent's live adapter list gives the adapter named <paramref name="interfaceName"/>;
+    /// <see langword="null"/> when the adapter is not in the list or the list cannot be read. Ignoring case,
+    /// because the name comes from Windows rather than from qBittorrent.
+    /// </summary>
+    internal async Task<string?> GetInterfaceTokenAsync(string interfaceName, CancellationToken cancellationToken = default)
+    {
+        var live = await GetNetworkInterfacesAsync(cancellationToken).ConfigureAwait(false);
+        return live?.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.OrdinalIgnoreCase)).Value;
     }
 
     // Live adapters as (name, token) pairs, or null when the list cannot be read - which includes

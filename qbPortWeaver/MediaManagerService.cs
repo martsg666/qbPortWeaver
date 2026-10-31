@@ -121,7 +121,7 @@ public static class MediaManagerService
                 Subsystem.MediaManager);
 
         var prep = await PrepareClassifiedSourcesAsync(
-            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, cancellationToken).ConfigureAwait(false);
+            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, sweepStalePartials: !dryRun, cancellationToken).ConfigureAwait(false);
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
@@ -183,7 +183,7 @@ public static class MediaManagerService
 
         // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
         var prep = await PrepareClassifiedSourcesAsync(
-            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, cancellationToken).ConfigureAwait(false);
+            apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, sweepStalePartials: false, cancellationToken).ConfigureAwait(false);
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
@@ -215,7 +215,22 @@ public static class MediaManagerService
         // offline: the window points the user at the log, so the log has to say it each time.
         if (unreadableSources.Length > 0)
             LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
-        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable);
+
+        // A media type whose library path is empty is skipped by design (ScanSourceFolderAsync), but the
+        // window would then report those files as already imported. Counted so it can say why instead.
+        int moviesWithoutLibrary = string.IsNullOrWhiteSpace(moviesLibraryPath)
+            ? classified.Sum(c => c.Items.MovieFiles.Length) : 0;
+        int episodesWithoutLibrary = string.IsNullOrWhiteSpace(tvShowsLibraryPath)
+            ? classified.Sum(c => c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length) : 0;
+        // Only the types actually skipped are named: "0 movie files and 903 TV episode files" read oddly.
+        var skippedParts = new List<string>(2);
+        if (moviesWithoutLibrary > 0) skippedParts.Add(TextFormat.Pluralize(moviesWithoutLibrary, "movie file"));
+        if (episodesWithoutLibrary > 0) skippedParts.Add(TextFormat.Pluralize(episodesWithoutLibrary, "TV episode file"));
+        if (skippedParts.Count > 0)
+            LogManager.Instance.LogMessage(
+                $"Scan skipped {string.Join(" and ", skippedParts)} with no library path set for their type",
+                LogLevel.Info, Subsystem.MediaManager);
+        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable, moviesWithoutLibrary, episodesWithoutLibrary);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -514,7 +529,7 @@ public static class MediaManagerService
     private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total, string[] UnreadableSources)?>
         PrepareClassifiedSourcesAsync(
             string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
-            bool allowLibraryReuse, CancellationToken cancellationToken)
+            bool allowLibraryReuse, bool sweepStalePartials, CancellationToken cancellationToken)
     {
         await Task.Run(() =>
         {
@@ -530,7 +545,7 @@ public static class MediaManagerService
         // On its own task: BuildLibraryIndexAsync does its walk synchronously before it first yields, so
         // called directly it would finish before the source listing even started. Started ahead of the
         // source folders' existence checks too, which against an offline share take seconds each.
-        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, sweepStalePartials, cancellationToken), cancellationToken);
         List<string> unreadableFolders;
         List<(string Folder, List<FileInfo> Candidates, bool Failed)> enumeration;
         try
@@ -659,8 +674,11 @@ public static class MediaManagerService
     // IgnoreInaccessible = true silently skips permission-denied folders.
     // Wrapped in InvokeWithSmbRetry to ride out transient ERROR_INVALID_FUNCTION responses
     // from SMB servers during connection renegotiation / oplock breaks.
-    private static List<FileInfo> EnumerateSourceFolder(string folder) =>
-        MediaImporter.InvokeWithSmbRetry(folder, () =>
+    // Sample clips are never imported (see FileNameParser.IsSampleFile); one Debug line per folder carries the
+    // count, not one per file, since the listing runs every cycle.
+    private static List<FileInfo> EnumerateSourceFolder(string folder)
+    {
+        List<FileInfo> files = MediaImporter.InvokeWithSmbRetry(folder, () =>
             new DirectoryInfo(folder)
                 .EnumerateFiles("*", new EnumerationOptions
                 {
@@ -670,6 +688,11 @@ public static class MediaManagerService
                 })
                 .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && MediaImporter.IsFileReadyForImport(fi))
                 .ToList());
+        int samples = files.RemoveAll(fi => FileNameParser.IsSampleFile(fi.FullName));
+        if (samples > 0)
+            LogManager.Instance.LogDebug($"MediaManagerService.EnumerateSourceFolder: skipped {TextFormat.Pluralize(samples, "sample file")} in '{folder}'");
+        return files;
+    }
 
     // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
     // Requires BuildLibraryIndex to have completed before calling - IsAlreadyInLibrary uses the index.
@@ -888,13 +911,7 @@ public static class MediaManagerService
 
         foreach (var file in files.Where(FileNameParser.IsSubtitleFile))
         {
-            var fileName = Path.GetFileName(file);
-            if (!fileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
-            // Require the character immediately after the base name to be '.' or end of string
-            // so "Movie.mkv" does not claim "Movie 2.srt" as a companion.
-            if (fileName.Length > videoBase.Length && fileName[videoBase.Length] != '.') continue;
-
-            var suffix = fileName[videoBase.Length..];
+            if (FileNameParser.SubtitleSuffixFor(Path.GetFileName(file), videoBase) is not { } suffix) continue;
             var targetPath = Path.Combine(targetDir, targetBase + suffix);
             ImportFile(file, targetPath, dryRun, importMode);
         }
@@ -953,4 +970,5 @@ public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bo
 /// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
 /// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported", and whether TMDB was
 /// unavailable for part of the scan, so its unmatched rows are not presented as titles TMDB does not know.</summary>
-public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false);
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false,
+    int MoviesWithoutLibrary = 0, int EpisodesWithoutLibrary = 0);

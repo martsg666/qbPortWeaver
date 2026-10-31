@@ -16,13 +16,14 @@ internal static class VpnAdapter
     // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
     // Unknown or Ethernet and are not excluded by this filter.
     //
-    // Guarded the same way the IsVpnConnected implementations guard this call: GetAllNetworkInterfaces
+    // Every adapter lookup goes through here (IsUp and with it the adapter-based IsVpnConnected checks,
+    // the NAT-PMP probes, ProtonVPN's adapter lookup), so this is the one guard: GetAllNetworkInterfaces
     // throws NetworkInformationException when the network subsystem is briefly unavailable, which on a
     // machine riding VPN adapter churn is an ordinary transient rather than a fault. An empty sequence
-    // hands the callers the answer they already handle - NatPmpManager.TryCreateForAdapterAsync returns
-    // null ("not found or not up"), and both adapter lists in Settings come back empty - instead of a
-    // throw that RunAsync would report as "An unexpected error occurred" at Error, for what is really
-    // just a disconnected adapter.
+    // hands the callers the answer they already handle - an adapter that is not up, a null from
+    // NatPmpManager.TryCreateForAdapterAsync, both adapter lists in Settings coming back empty - instead
+    // of a throw that RunAsync would report as "An unexpected error occurred" at Error, for what is
+    // really just a disconnected adapter.
     //
     // ToList inside the try is load-bearing: a deferred Where would run GetAllNetworkInterfaces at the
     // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire. The
@@ -48,29 +49,49 @@ internal static class VpnAdapter
     }
 
     /// <summary>
-    /// Returns <see langword="true"/> if an adapter named <paramref name="adapterName"/> exists and is up.
-    /// Re-enumerates on every call, because a stored <see cref="NetworkInterface"/> keeps its last-seen
-    /// status after the adapter is removed on disconnect.
+    /// Returns <see langword="true"/> if an adapter named <paramref name="adapterName"/> is among the
+    /// <see cref="GetActiveInterfaces"/> candidates, so it is up. Re-enumerates on every call, because a
+    /// stored <see cref="NetworkInterface"/> keeps its last-seen status after the adapter is removed on
+    /// disconnect.
     /// </summary>
     /// <param name="adapterName">The adapter to look for, matched ignoring case.</param>
     /// <param name="caller">Prefix for the debug lines, so the log names the manager that asked.</param>
     internal static bool IsUp(string adapterName, string caller)
     {
+        bool connected = IsUpQuiet(adapterName);
+
+        LogManager.Instance.LogDebug(connected
+            ? $"{caller}: Adapter '{adapterName}' is connected"
+            : $"{caller}: Adapter '{adapterName}' is not found or not connected");
+
+        return connected;
+    }
+
+    /// <summary>
+    /// <see cref="IsUp"/> without the debug lines, for checks that run alongside it in the same cycle
+    /// (the active-adapter lookup behind the interface checks).
+    /// </summary>
+    /// <param name="adapterName">The adapter to look for, matched ignoring case.</param>
+    internal static bool IsUpQuiet(string adapterName) =>
+        GetActiveInterfaces().Exists(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether any adapter named <paramref name="adapterName"/> is up, of any type - unlike
+    /// <see cref="IsUpQuiet"/>, tunnel-type adapters count too. For the check that must never call a live
+    /// adapter down (PortSyncService.ActiveAdapterInsteadOf). <see langword="true"/> when the list cannot be
+    /// read, so an unreadable list never moves a binding.
+    /// </summary>
+    internal static bool IsUpAnyType(string adapterName)
+    {
         try
         {
-            bool connected = NetworkInterface.GetAllNetworkInterfaces()
-                .Any(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase)
-                         && nic.OperationalStatus == OperationalStatus.Up);
-
-            LogManager.Instance.LogDebug(connected
-                ? $"{caller}: Adapter '{adapterName}' is connected"
-                : $"{caller}: Adapter '{adapterName}' is not found or not connected");
-
-            return connected;
+            return NetworkInterface.GetAllNetworkInterfaces().Any(nic =>
+                nic.OperationalStatus == OperationalStatus.Up && nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
         }
-        catch (Exception ex)
+        catch (NetworkInformationException ex)
         {
-            return LogManager.LogDebugFalse($"{caller}: {ex.Message}");
+            LogManager.Instance.LogDebug($"VpnAdapter.IsUpAnyType: {ex.Message}");
+            return true;
         }
     }
 

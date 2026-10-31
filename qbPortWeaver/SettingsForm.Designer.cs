@@ -510,9 +510,9 @@ partial class SettingsForm
         chkQBittorrentFixInterfaceBinding.AutoSize = true;
         chkQBittorrentFixInterfaceBinding.Location = new Point(15, 314);
         chkQBittorrentFixInterfaceBinding.Name     = "chkQBittorrentFixInterfaceBinding";
-        chkQBittorrentFixInterfaceBinding.Size     = new Size(330, 19);
+        chkQBittorrentFixInterfaceBinding.Size     = new Size(434, 19);
         chkQBittorrentFixInterfaceBinding.TabIndex = 18;
-        chkQBittorrentFixInterfaceBinding.Text     = "Fix the network interface binding when it goes stale";
+        chkQBittorrentFixInterfaceBinding.Text     = "Fix the interface binding when it goes stale or the VPN adapter changes";
         // ── grpDeluge ─────────────────────────────────────────────────
         grpDeluge.Controls.Add(lblDelugeURL);
         grpDeluge.Controls.Add(txtDelugeURL);

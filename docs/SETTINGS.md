@@ -59,9 +59,9 @@ update first.
 | Restart after a port change | Restart qBittorrent after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
-| Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
+| Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up. Also controls the warning for a stale binding that is not fixed automatically | `True` |
 | Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name). At most 3 restarts in a row; they start again once qBittorrent reports connected | `True` |
-| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. Your qBittorrent settings are left as you had them | `True` |
+| Fix the interface binding when it goes stale or the VPN adapter changes | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. After a switch of VPN protocol or provider, re-points qBittorrent from the old adapter, now down, to the active VPN adapter, and restarts it so DHT starts on the new adapter (once, with the port-change restart when the port changes too and that restart is on). Apart from that re-point, your qBittorrent settings are left as you had them | `True` |
 
 ### Transmission
 
@@ -102,7 +102,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Executable | Path to the Nicotine+ executable, also used to find a portable installation's data folder | `C:\Program Files\Nicotine+\Nicotine+.exe` |
 | Process name | Process name used to detect if Nicotine+ is running | `Nicotine+` |
 | Force-start if not running | Automatically launch Nicotine+ if it is not running | `True` |
-| Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider | `True` |
+| Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider, is bound to all interfaces, or is an adapter that is down while the VPN's adapter is up | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
 ### Auto-Recovery
@@ -114,7 +114,7 @@ Two limits keep it from acting where it cannot help, since every recovery briefl
 - **Conditions a restart cannot fix are excluded.** If the provider reports that port forwarding is switched off in its own settings, or that the connected server region does not offer it, that is logged as a warning and no recovery is triggered, however long the condition lasts.
 - **Consecutive attempts are capped.** After 3 recoveries in a row that fail to produce a forwarded port, auto-recovery is suspended, and says so in the log. It resumes automatically as soon as a port is read successfully. A remedy that has not worked three times running is not addressing the cause, so repeating it on a timer would only keep interrupting the connection. The **Test** button is never affected by the cap.
 
-There is also a cheaper remedy it tries first. If the port stays closed and the adapter qBittorrent is bound to changed address, qBittorrent is nudged into listening on the new address before the VPN is restarted, since a restart cannot move a listener that is stuck on the old one. If that does not reopen the port, the next round restarts the VPN as before. This needs **Fix the network interface binding when it goes stale** on as well as the two settings in the table below, since it changes a client setting to force the rebind.
+There is also a cheaper remedy it tries first. If the port stays closed and the adapter qBittorrent is bound to changed address, qBittorrent is nudged into listening on the new address before the VPN is restarted, since a restart cannot move a listener that is stuck on the old one. If that does not reopen the port, the next round restarts the VPN as before. This needs **Fix the interface binding when it goes stale or the VPN adapter changes** on as well as the two settings in the table below, since it changes a client setting to force the rebind.
 
 | Setting | Description | Default |
 |---|---|---|

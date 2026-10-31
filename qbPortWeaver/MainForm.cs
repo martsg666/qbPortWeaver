@@ -141,10 +141,6 @@ public partial class MainForm : Form
         // Ensure all registry keys exist, writing defaults for any missing ones
         RegistrySettingsManager.EnsureDefaults();
 
-        // Refresh the Windows startup Run-key entry if the install was moved or upgraded
-        // (covers Chocolatey upgrades and manual moves that would otherwise silently break autostart)
-        StartupManager.RefreshStartupPathIfMoved();
-
         _portSyncService = new PortSyncService();
         _portSyncService.SyncCompleted += OnSyncCompleted;
         _portSyncService.InterfaceMismatchDetected += ShowWarningBalloon;
@@ -170,6 +166,12 @@ public partial class MainForm : Form
         {
             // Log once at startup so the version is visible in the log file for diagnostics
             LogManager.Instance.LogMessage($"{AppIdentity.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
+
+            // Refresh the Windows startup Run-key entry if the install was moved or upgraded (covers
+            // Chocolatey upgrades and manual moves that would otherwise silently break autostart). Here
+            // rather than in the constructor: its Warns must reach OnWarnOrErrorLogged, which is
+            // subscribed only at the end of the constructor, once the tray icon exists.
+            StartupManager.RefreshStartupPathIfMoved();
 
             // Perform initial log rotation check
             LogManager.Instance.CheckAndRotateLogFile();
@@ -437,7 +439,12 @@ public partial class MainForm : Form
                 "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?"))
             return;
 
-        LogManager.Instance.ClearLogs();
+        if (LogManager.Instance.ClearLogs() is { } error)
+        {
+            // Logged after ClearLogs has released its lock. The Warn raises the usual badge and balloon.
+            LogManager.Instance.LogMessage($"Could not clear all log files: {error}", LogLevel.Warn);
+            return;
+        }
         ResetLogAlerts();
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
     }

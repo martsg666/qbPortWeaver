@@ -135,9 +135,40 @@ public static partial class FileNameParser
     public static bool IsVideoFile(string path) =>
         _videoExtensions.Contains(Path.GetExtension(path));
 
+    private const string SampleToken = "sample";
+
+    /// <summary>
+    /// Returns true for a sample clip: a file in a folder named "sample", or whose name (without extension)
+    /// is "sample" or ends with "sample" as a separate word (after '.', '-', '_' or a space), ignoring case.
+    /// A sample parses to the same title as the full file beside it, so importing it could take the
+    /// library slot and leave the real file in a conflict on every cycle.
+    /// </summary>
+    public static bool IsSampleFile(string path)
+    {
+        if (string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), SampleToken, StringComparison.OrdinalIgnoreCase))
+            return true;
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (!name.EndsWith(SampleToken, StringComparison.OrdinalIgnoreCase)) return false;
+        if (name.Length == SampleToken.Length) return true;
+        return name[name.Length - SampleToken.Length - 1] is '.' or '-' or '_' or ' ';
+    }
+
     /// <summary>Returns true if the file has a subtitle extension recognized by Plex (.srt, .sub, .ass, etc.).</summary>
     public static bool IsSubtitleFile(string path) =>
         _subtitleExtensions.Contains(Path.GetExtension(path));
+
+    /// <summary>
+    /// The part of a subtitle's file name after <paramref name="videoBase"/> (its language tag and
+    /// extension, such as ".en.srt"), or <see langword="null"/> when the subtitle does not belong to
+    /// that video. The character after the base name must be '.' or the end of the name, so
+    /// "Movie.mkv" does not claim "Movie 2.srt" as a companion.
+    /// </summary>
+    public static string? SubtitleSuffixFor(string subtitleFileName, string videoBase)
+    {
+        if (!subtitleFileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) return null;
+        if (subtitleFileName.Length > videoBase.Length && subtitleFileName[videoBase.Length] != '.') return null;
+        return subtitleFileName[videoBase.Length..];
+    }
 
     /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx or NxNN).</summary>
     public static bool IsTvShowEpisode(string name) =>
@@ -440,7 +471,7 @@ public static partial class FileNameParser
     // writes, so the project-wide "no em dashes" rule does not apply here any more than the "no media
     // titles" rule applies to the codec tokens in _cutoffTokens. A sweep that strips it would stop the
     // parser recognising the real filenames that use an em dash as the separator. Leave all three.
-    [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-–—]\s*)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-\u2013\u2014]\s*)", RegexOptions.IgnoreCase)]
     private static partial Regex SitePrefixRegex();
 
     // Matches underscore-prefixed language codes at end of string: _VOSTFR, _VF-EN, _VO-FR, etc.

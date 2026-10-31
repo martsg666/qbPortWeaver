@@ -276,7 +276,7 @@ public partial class MediaManagerForm : Form
         prgScan.Maximum = total;
         prgScan.Value = 0;
 
-        int done = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, cancellationToken);
+        var (done, noEpisode) = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, cancellationToken);
         if (IsDisposed) return null;
         await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, done, cancellationToken);
         if (IsDisposed) return null;
@@ -289,15 +289,21 @@ public partial class MediaManagerForm : Form
             return "TMDB could not be reached or rejected the API key; some rows were not re-matched.";
         int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
                      + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
-        return verified == total
+        string result = verified == total
             ? "Re-match complete - all rows verified."
             : $"Re-match complete - {verified}/{total} rows verified.";
+        // Otherwise those rows read as unverified with no reason, and the log holds only a Debug line.
+        return noEpisode > 0
+            ? $"{result} {TextFormat.Pluralize(noEpisode, "TV row")} skipped: no episode number (SxxExx) in the name or the source file."
+            : result;
     }
 
-    // Re-matches TV show rows grouped by show name. Returns updated done count.
-    private async Task<int> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
+    // Re-matches TV show rows grouped by show name. Returns the updated done count, and how many rows were
+    // skipped because neither the edited name nor the source file carries an episode number.
+    private async Task<(int Done, int NoEpisode)> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
         List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken cancellationToken)
     {
+        int noEpisode = 0;
         foreach (var (showKey, showRows) in GroupTvShowRowsByShow(tvShowRows))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -306,14 +312,14 @@ public partial class MediaManagerForm : Form
                 : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show", cancellationToken);
             foreach (var row in showRows)
             {
-                if (IsDisposed) return done;
-                if (showInfo is not null)
-                    ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
+                if (IsDisposed) return (done, noEpisode);
+                if (showInfo is not null && !ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident))
+                    noEpisode++;
                 prgScan.Value = Math.Min(++done, prgScan.Maximum);
                 lblScanStatus.Text = $"Re-matching… {done}/{total}";
             }
         }
-        return done;
+        return (done, noEpisode);
     }
 
     // Re-matches movie rows individually. Returns updated done count.
@@ -398,18 +404,23 @@ public partial class MediaManagerForm : Form
         }
     }
 
-    private void ApplyTvRematchResult(DataGridViewRow row, TvShowInfo info, string tvShowLib, bool createFolders, bool isConfident)
+    // Returns false when the row is skipped for want of an episode number. The edited name is the user's
+    // choice of show, but it may not repeat the episode code: a red row corrected to just "Show Name (Year)"
+    // still names an episode, the one in its source file, so that is read when the edited name has none.
+    private bool ApplyTvRematchResult(DataGridViewRow row, TvShowInfo info, string tvShowLib, bool createFolders, bool isConfident)
     {
         var editedName = GetProposedName(row);
-        var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName);
+        var sourceName = row.Tag is RowData rd ? Path.GetFileName(rd.Proposal.OriginalPath) : string.Empty;
+        var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName) ?? FileNameParser.ParseTvShowEpisode(sourceName);
         if (episodeInfo is null)
         {
-            LogManager.Instance.LogDebug($"MediaManagerForm.ApplyTvRematchResult: Could not parse episode info from '{editedName}' - row skipped", Subsystem.MediaManager);
-            return;
+            LogManager.Instance.LogDebug($"MediaManagerForm.ApplyTvRematchResult: No episode number in '{editedName}' or '{sourceName}' - row skipped", Subsystem.MediaManager);
+            return false;
         }
 
         var proposedPath = TvShowProcessor.BuildEpisodePath(editedName, info, episodeInfo, tvShowLib, createFolders);
         UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
+        return true;
     }
 
     private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
@@ -511,7 +522,20 @@ public partial class MediaManagerForm : Form
             return result.UnreadableSourceFolders.Length > 0
                 ? "Some source folders could not be read, and TMDB was unavailable. See the log."
                 : "TMDB could not be reached or rejected the API key; some files were not looked up.";
-        return UnreadableSourcesStatus(result, sourceFolders.Length);
+        return UnreadableSourcesStatus(result, sourceFolders.Length) ?? NoLibraryStatus(result);
+    }
+
+    // With nothing to propose, the grid summary would read "All files already imported." for files that
+    // were skipped only because their type has no library path. Null otherwise: when there are proposals,
+    // the summary is about them, and the log carries the skipped count.
+    private static string? NoLibraryStatus(MediaScanResult result)
+    {
+        if (result.Proposals.Count > 0) return null;
+        if (result.MoviesWithoutLibrary > 0)
+            return $"{TextFormat.Pluralize(result.MoviesWithoutLibrary, "movie file")} skipped: set the Movies library to import them.";
+        if (result.EpisodesWithoutLibrary > 0)
+            return $"{TextFormat.Pluralize(result.EpisodesWithoutLibrary, "TV episode file")} skipped: set the TV shows library to import them.";
+        return null;
     }
 
     // The grid summary alone would read "All files already imported." for a source folder that could not
@@ -679,6 +703,26 @@ public partial class MediaManagerForm : Form
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
     // Each row carries its own MediaProposal in Tag so row order is irrelevant.
+    // Whether a destination built from a typed name stays inside its library folder once normalised. The
+    // folder is derived from the name as well (RebuildProposedDir), so a name such as ".. - S01E01" or
+    // ".. - cd1" names the folder "..", and the import - whose destination AddFileToLibrary normalises -
+    // would land in the library's parent. Checking the outcome covers every such name, not a list of them.
+    // Unreadable or empty library paths fail closed.
+    private bool IsInsideLibrary(string proposedPath, string mediaType)
+    {
+        string library = (mediaType == MediaProposal.TypeMovie ? txtMoviesLibraryPath.Text : txtTvShowsLibraryPath.Text).Trim();
+        if (library.Length == 0) return false;
+        try
+        {
+            string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(library)) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(proposedPath).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     private List<MediaProposal> BuildProposalsFromGrid()
     {
         var toApply = new List<MediaProposal>();
@@ -702,6 +746,7 @@ public partial class MediaManagerForm : Form
             // folder stays consistent with the new name - not the stale name from the original scan.
             var resolvedDir = RebuildProposedDir(proposedDir, editedName);
             var proposedPath = Path.Combine(resolvedDir, editedName);
+            if (!IsInsideLibrary(proposedPath, original.MediaType)) continue;
 
             if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 toApply.Add(original with { ProposedPath = proposedPath, IsMatched = true });
@@ -1116,6 +1161,10 @@ public partial class MediaManagerForm : Form
         string sourceExtension = row.Tag is RowData rd ? Path.GetExtension(rd.Proposal.OriginalPath) : string.Empty;
         if (sourceExtension.Length > 0 && !name.EndsWith(sourceExtension, StringComparison.OrdinalIgnoreCase))
             name = FileNameParser.IsVideoFile(name) ? Path.ChangeExtension(name, sourceExtension) : name + sourceExtension;
+        // A name that is only dots before its extension ("..", "..mkv") survives the steps above, and
+        // RebuildProposedDir would then name the movie folder "." or "..", importing into the library root
+        // or its parent. Treated as no name, so the row is skipped like an empty one.
+        if (Path.GetFileNameWithoutExtension(name).Trim('.', ' ').Length == 0) return string.Empty;
         return name;
     }
 

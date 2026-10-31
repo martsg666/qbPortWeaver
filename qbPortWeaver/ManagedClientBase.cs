@@ -24,6 +24,13 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected readonly string Url;
     protected readonly string ProcessName;
     protected readonly string ExePath;
+
+    /// <summary>
+    /// Whether the configured executable exists, so a caller can avoid closing a client it could not start
+    /// again (RestartAsync closes the running process before it launches this path).
+    /// </summary>
+    internal bool ExecutableExists => !string.IsNullOrWhiteSpace(ExePath) && File.Exists(ExePath);
+
     protected readonly HttpClient HttpClient;
     // Not volatile: IsAuthenticated is only accessed by one sync cycle at a time, never concurrently.
     // The awaits run with ConfigureAwait(false), so successive accesses can land on different pool
@@ -150,7 +157,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // deliberately not propagated. A client whose process is up but whose Web UI is still warming
     // still returns true, because the alternative - reporting a start failure for a slow-but-healthy
     // client - is the worse error, and the first real request produces a far better-targeted message
-    // than this probe could. A probe timeout is recorded at Debug and nowhere else.
+    // than this probe could. A probe timeout is logged as a Warn (see WaitForApiReadyAsync).
     protected async Task<bool> LaunchAndWaitAsync(int initialDelayMs, CancellationToken cancellationToken)
     {
         Process.Start(CreateStartInfo())?.Dispose();
@@ -171,9 +178,11 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return true;
     }
 
-    // Probes the API URL until it returns any HTTP response (API is accepting requests) or the timeout elapses.
-    // A short per-probe cancellation avoids blocking on a slow response mid-startup.
-    private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
+    // Probes the API URL until it returns an HTTP response below 500 (the API is accepting requests) or the
+    // timeout elapses. A 5xx keeps polling: a reverse proxy in front of the client answers 502/503 while the
+    // client behind it is still starting. A short per-probe cancellation avoids blocking on a slow response
+    // mid-startup. The timeout is a Warn, so the failures the next calls log have their cause beside them.
+    protected async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
     {
         // Monotonic: a clock correction mid-startup must not cut the probe short or extend it.
         var probeTimer = Stopwatch.StartNew();
@@ -184,7 +193,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
                 using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
                 using var response = await HttpClient.GetAsync(ResolveUrl(), probeCts.Token).ConfigureAwait(false);
-                return;
+                if ((int)response.StatusCode < 500) return;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             // HttpRequestException (connection refused) and OperationCanceledException from the
@@ -193,7 +202,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
             catch { } // NOSONAR S108
             await Task.Delay(ApiReadyPollIntervalMs, cancellationToken).ConfigureAwait(false);
         }
-        LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
+        LogManager.Instance.LogMessage(
+            $"{ClientName} started, but its {ApiLabel} did not answer within {ApiReadyTimeoutSeconds} seconds",
+            LogLevel.Warn);
     }
 
     /// <summary>

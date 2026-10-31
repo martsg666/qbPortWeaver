@@ -1222,6 +1222,8 @@ public partial class LogViewerForm : Form
 
             (LogLine[] lines, long position) = await Task.Run(() =>
             {
+                string text;
+                long readPosition;
                 lock (_readLock)
                 {
                     // FileShare.Delete for the same reason AppFiles.OpenShared grants it: LogManager rotates by
@@ -1230,8 +1232,12 @@ public partial class LogViewerForm : Form
                     // it, but there is no reason to lose the race.
                     using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     using var reader = new StreamReader(fs, Encoding.UTF8);
-                    return (ParseLogLines(reader.ReadToEnd()), fs.Position);
+                    text = reader.ReadToEnd();
+                    readPosition = fs.Position;
                 }
+                // Parsed outside the lock: the UI thread takes _readLock for live updates and file
+                // switches, and a large log's parse would otherwise hold it up for the whole parse.
+                return (ParseLogLines(text), readPosition);
             });
 
             if (IsDisposed || generation != _watcherGeneration) return;

@@ -128,6 +128,10 @@ class PortTest:
 
     def _native_request(self, port, wait_seconds):
         now = time.monotonic()
+        # The wait counts from here, not from after the start call below: that call queues on the main
+        # thread (up to the proxy's read timeout), and waiting the full budget after it could run past
+        # the HTTP timeout qbPortWeaver sized to the wait it asked for.
+        deadline = now + wait_seconds
 
         with self._lock:
             if self._has_fresh_open_verdict(port, now):
@@ -160,7 +164,7 @@ class PortTest:
                 return {"ok": True, "state": STATE_PENDING, "port": port,
                         "result": None, "age_ms": 0, "source": SOURCE_NATIVE}
 
-        self._done.wait(wait_seconds)
+        self._done.wait(max(0.0, deadline - time.monotonic()))
 
         with self._lock:
             return self._snapshot()
